@@ -1,0 +1,84 @@
+# -----------------------------------------------------------------------------
+# Recovery source archives (local evidence only; never upload to Git)
+# -----------------------------------------------------------------------------
+/ExportedProject/
+/AuxiliaryFiles/
+
+# Temporary Unity-side reference copies. Keep only the policy file and folder metadata.
+/UnityProject/Assets/_ReferenceTemp/*
+!/UnityProject/Assets/_ReferenceTemp/README.md
+!/UnityProject/Assets/_ReferenceTemp/README.md.meta
+
+# Codex/local agent state
+/.agents/
+/.codex/
+
+# -----------------------------------------------------------------------------
+# Unity generated
+# -----------------------------------------------------------------------------
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+AssetStoreTools*
+
+# Unity generated project files
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+*.opendb
+*.VC.db
+*.unityproj
+*.booproj
+*.svd
+*.tmp
+*.pidb
+*.pdb
+*.mdb
+
+# Unity test and profiling output
+[Tt]est[Rr]esults/
+[Cc]overage[Rr]eports/
+
+# -----------------------------------------------------------------------------
+# IDE/editor
+# -----------------------------------------------------------------------------
+
+.vs/
+.idea/
+.vscode/
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.sln.iml
+ExportedObj/
+consulo/
+
+# Rider package generated inside Assets
+/UnityProject/Assets/Plugins/Editor/JetBrains*
+
+# -----------------------------------------------------------------------------
+# OS
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# -----------------------------------------------------------------------------
+# Build and crash artifacts
+# -----------------------------------------------------------------------------
+sysinfo.txt
+crashlytics-build.properties
+*.apk
+*.aab
+*.app
+*.exe
+*.unitypackage
+*.dmp

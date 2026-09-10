@@ -1,0 +1,65 @@
+# Unity generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Asset Store tools
+/[Aa]ssets/AssetStoreTools*
+
+# IDE and editor files
+.vs/
+.vscode/
+.idea/
+ExportedObj/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Unity crash and diagnostics
+sysinfo.txt
+*.stacktrace
+
+# Builds and packages
+*.apk
+*.aab
+*.app
+*.unitypackage
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local.json
+secrets/
+
+# Read-only recovery evidence and separate firmware repository
+/DF_AP_1.3.5_Ext/
+/DF_FW_Code/
+/DF_AP_Custom/ExportedProject/
+/DF_AP_Custom/AuxiliaryFiles/
+
+# Local agent state
+.agents/
+.codex/
