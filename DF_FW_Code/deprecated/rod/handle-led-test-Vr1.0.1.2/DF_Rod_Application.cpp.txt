@@ -1,0 +1,251 @@
+#include "DF_Rod_Application.h"
+#include "DF_Rod_Internal.h"
+#include "modules/DF_Rod_SchedulerAndInput.h"
+
+void DF_Rod_Application_Setup()
+{
+
+	//==
+	curr_ms_tick = millis();
+
+	//== SET Serial USB CDC UART (PC-Slave)
+	Serial.begin(115200);
+	Serial.setTimeout(10);
+	//Serial.println();
+
+	DbgSerial.begin(115200, SERIAL_8N1, DEBUG_RX_PIN, DEBUG_TX_PIN);		// TXD_0 / RXD_0(Vr1.0.1.0)
+	DbgSerial.setTimeout(10);		  // wait 10ms, Default 1SEC
+
+	//== 보드 Type판별
+	settingIOtype();	// SET Type for EACH IO by BOARD Type
+
+	//== 1)핀 입출력 모드 설정
+	// 보드 TYPE설정 포함
+	ioPinSetting();
+
+	//== SETUP MODE 읽기
+	setSlaveMode();		// Slave Mode SET
+
+	//== 3) Power ON, LED깜빡 제어
+	// LED3 Binking 3 times ( ON/OFF Toggle 6 times each 50ms For 300ms )
+	int cnt = 0;
+	while (cnt < 6)		// 300ms = 50ms * 6 times
+	{
+	  cnt++;
+	  led1Grn_OutSts = !led1Grn_OutSts;
+	  digitalWrite(LED1_GRN_PIN, led1Grn_OutSts);
+	  led2Red_OutSts = !led2Red_OutSts;
+	  digitalWrite(LED2_RED_PIN, led2Red_OutSts);
+	  delay(50);	// 50ms마다 깜빡
+	}
+
+	//== LED2,3 All OFF
+	// 보드 LED 출력
+	led1Grn_OutSts = LOW;
+	digitalWrite(LED1_GRN_PIN, led1Grn_OutSts);
+	led2Red_OutSts = LOW;
+	digitalWrite(LED2_RED_PIN, led2Red_OutSts);
+
+	//== 버튼 LED출력
+	btnLFLedRed_OutSts = BTN_LED_OFF;		// Not Active
+	digitalWrite(BTN_LED_LF_RED_PIN, btnLFLedRed_OutSts);
+	btnRTLedBlue_OutSts = BTN_LED_OFF;		// Not Active
+	digitalWrite(BTN_LED_RT_BLUE_PIN, btnRTLedBlue_OutSts);
+
+
+	LogPrintln(" LG] VER:" + String(rodVer));
+
+	//== File System Mount Check
+	checkFileSystem();		// Format후 Reset
+
+	//== GET Target Mac Address, Addr NG시 Deafult SET : FF~FF
+	eNow.bindTargetAddress();	// eNow Target Addr Load, TBD-Error처리
+
+	//== IMU SERAIL_1 SET
+	imuSerial.begin(115200, SERIAL_8N1, IMU_RX, IMU_TX);	// Return Thing
+
+	//== imu AutoOutSet
+	if(0 != imu.checkSetupFileVal())	// 0-OK, else-NG
+	{
+		// imu Out Setup
+			LogPrintln(" LG] IMU OUT AUTO_SET Start");
+		imu.autoSetup();
+		// File "100"저장
+		short len = imu.saveInterval(IMU_INTV_DEFAULT_TIME);	//// Write Byte수, Intv=100ms
+		//delay(1000);
+		//ESP_Soft_Reset();
+	}
+	else
+	{
+	}
+
+	//== @@ Sleep & Wakeup
+
+	//=== INIT OBJ
+	sBtn.init();	// PIN설정, Type결정
+	imu.init();		// IMU SERIAL 1 설정
+
+	//==== MODE SELECTION  : NORMAL/SETUP
+	if(0) { /* dummy*/ }
+
+	//==Setup Mode ?
+	//if (!digitalRead(SETUP_MODE_PIN))	// Normal Mode
+	if (isSlaveSetupMode())			// SetUp Mode?
+	{
+		// IMU Stop Stepup Mode
+		imu.setStartStop(IMU_CONF_STOP);			// IMU STOP
+		flagIMUSTOP = 1;
+
+		// Output LED3 ON
+		led2Red_OutSts = HIGH;
+		digitalWrite(LED2_RED_PIN, led2Red_OutSts);		// SETUP MODE : RED ON
+	}
+
+	//==Normal Mode?
+	else
+	{
+		// INIT enow,Encoder,Motor Only Normal Mode
+		eNow.init(recv_cb_esp_now_msg);
+		if( ESP_OK != esp_now_register_send_cb(sent_cb_esp_now_sts))
+		{
+			LogPrintln(" LG] Error NOW SENT_CB_REGIST NG");
+		}
+
+		encoder.init();
+		battery.init();
+		//    imu.init();
+
+		// Set Callback Funtion encoder/Btn/imu, Only Norma Mode
+		encoder.setRotateCallback(rotateChangeCallback);
+		encoder.setActivityCallback(DF_Rod_Communication_HandleEncoderActivity);
+		sBtn.setSwitchCallback(btnChangeCallback);
+		imu.setStateCallback(imuDataCallback);
+
+		imu.setStartStop(IMU_CONF_START);			// IMU START
+
+		led1Grn_OutSts = HIGH;
+		digitalWrite(LED1_GRN_PIN, led1Grn_OutSts);
+
+	}
+
+	//== FLAG & VAR INIT
+	rodPowerOnFlag = 1;		// PowerOn후 MAIN에 ROD정보 송부용 Flag
+	// set Not Recv Now Msg(pid)
+	//system Delay Count CLR
+	system_delay_cnt = 0;
+
+	LogPrintln(" LG] PWRON_ time:" + String(millis()-curr_ms_tick));
+
+	// System Timer CLR
+	curr_ms_tick = millis();
+	oldcurr_ms_tick = curr_ms_tick;
+
+}
+
+void DF_Rod_Application_Loop()
+{
+
+	//==== System Run Timer & Counter
+	run_timer();			// Freerun Timer & System Counter() 1ms, 10ms, 100ms, 1 sec)
+	DF_Rod_Ota_Process();
+
+	//===== MODE SELECTION
+
+	//-- SETUP
+	//Setup Mode (Mac Address & Imu Config Setup)
+	//if (digitalRead(SETUP_MODE_PIN))
+	if (isSlaveSetupMode())
+	{
+
+		if(0 < sys_1ms_cnt)
+		{
+			sys_1ms_cnt--;
+
+			if(0 < sys_10ms_cnt)
+			{
+				sys_10ms_cnt--;
+
+				//==10ms마다 처리, SETUP은
+				// recv PC
+				uartPcHandler_Setup();			// Recv CMD from PC exxcute & Response
+				// recv IMU
+				resp_imu = imu.uartRecv_Setup(); 		// Slave-IMU
+				// TBD : LOG
+			}
+			if(0 < sys_100ms_cnt)	{ sys_100ms_cnt--; }
+			if(0 < sys_500ms_cnt)	{ sys_500ms_cnt--; }
+			if(0 < sys_1sec_cnt)	{ sys_1sec_cnt--; }
+		}
+
+	}
+
+	//-- Normal Mode
+	else
+	{
+		// 1 ms처리 , NORMAL
+		if(0 < sys_1ms_cnt)
+		{
+			chk_ms_tick = millis(); 	// Read Current Tick
+
+			sys_1ms_cnt--;		// 1ms마다 실행.
+
+			// TBD, 1ms INput READ(Button)
+			// TBD, 10ms/100ms INPUT READ
+
+			// recv MAIN
+			nowRecvHandler();			//1ms eNow(MAIN->SLAVE)
+			// recv PC : uartHandlerNormal();			// Recv CMD from PC exxcute & Response
+			uartPcHandler_NormalMode();
+
+			//battery.scan();	// Move to 100ms Process
+			resp_imu = imu.uartRecv_Normal();			// 1ms IMU Data Read 5ms
+
+
+			//
+			encoder.rotate();		// 1ms Handle Encoder
+			DF_Rod_Communication_ProcessEncoderActivityLed();
+			//
+			sBtn.toggle();			// 1ms Button Toggle READ
+
+			//=================================
+			//-- Timer 1ms,10ms,100ms,1sec EXEC-----
+			//t1ms_Process();	// NA
+
+			if(0 < sys_10ms_cnt)
+			{
+				sys_10ms_cnt--;
+				t10ms_Process();	// NA
+			}
+
+			if(0 < sys_100ms_cnt)
+			{
+				sys_100ms_cnt--;
+				t100ms_Process();	//
+			}
+
+			if(0 < sys_500ms_cnt)
+			{
+				sys_500ms_cnt--;
+				t500ms_Process();	//
+			}
+
+			if(0 < sys_1sec_cnt)
+			{
+				sys_1sec_cnt--;
+				t1sec_Process();
+				// Alive, Sleep Check
+				// batt Level Change Check
+				// imu Connect Check
+				//LogPrintln(" LG] SyT_1s " + String(sys_100ms_cnt) + "," + String(sys_1sec_cnt) + "[100ms,1sec]");
+			}
+
+			// Check Delay Time
+				if(1 < (millis()-chk_ms_tick))
+				{
+					LogPrintln(" LG] 1msExe Delay:" + String(millis()-chk_ms_tick)+" ms");
+				}
+		}
+		// 1ms Call in NORMAL
+		//delay(1);
+	}
+}

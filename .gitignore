@@ -37,6 +37,7 @@ sysinfo.txt
 *.stacktrace
 
 # Builds and packages
+/bin/
 *.apk
 *.aab
 *.app
@@ -54,11 +55,15 @@ Desktop.ini
 *.local.json
 secrets/
 
-# Read-only recovery evidence and separate firmware repository
+# Read-only recovery evidence
 /DF_AP_1.3.5_Ext/
-/DF_FW_Code/
 /DF_AP_Custom/ExportedProject/
 /DF_AP_Custom/AuxiliaryFiles/
+
+# DF_FW_Code is integrated and tracked by this parent repository.
+!/DF_FW_Code/
+!/DF_FW_Code/**/*.csproj
+!/DF_FW_Code/**/*.sln
 
 # Local agent state
 .agents/

@@ -1,0 +1,931 @@
+// Main LM and wire control implementation.
+#include "../DF_Main_Internal.h"
+#include "DF_Main_LmWireControl.h"
+void anaDeviceContReq(String msg)
+{
+	unsigned int iKind = msg.substring(3).toInt();
+
+	String respMsg ="--";
+	
+	switch(iKind)
+	{
+		// 모든 출력 정지 요구.
+		case 0:			// Device All OFF
+			motor_AllOff();		// MAIN ALL OFF
+			
+			reelOut_AllOff();	// REEL ALL OFF
+
+		
+			LogPrintln(" LG] DevRq $1500 Device AllOff");
+			break;
+
+		// [장애검지] 요구
+		case 1:			// Device Ready Check
+
+			// AP가 계속 반복 통지를 대응(처리중 요구는 무시)
+			if(0 == devReadychkFlag)
+			{
+				// 1) 검지한 에러 클리어.
+				if(devChkErrOccure)
+				{
+					devChkErrOccure = 0;
+				}
+
+					//2) STBY 토크OFF제어 중첩 처리
+						// 대기OFF제어 중이면, 중지 & 예약
+					if(stbyTorqOffControl_Flag) 	// [STBY토크OFF]제어 중?
+					{
+						stbyTorqOffControl_Req_Flag = 1;	// 장치장애검지 종료시, OFF재시작 SET
+						stbyTorqOffControl_Stop(0);	// OFF제어 중지. (V108) 토크 모터 기본값 출력 안함
+					}
+						// 대기OFF제어 중이 아니고 && 현상태가 대기중이면, 예약
+					else if( GMWAT_STBY == gmWatStatus)
+					{
+						stbyTorqOffControl_Req_Flag = 1;	// 예약				
+					}
+
+				// Error CLR SEND
+			
+				// 3) Device Ready Check
+				devReadyCheck();
+				// 4) 장치제어 종료(OK/ERR)때 , 대기OFF제어 Check는 각 ERR및 OK종료 함수에서 Check 
+			}
+
+
+			//== FW자체 값 자발 출력 to AP ( TM Only )
+			if( AP_IS_TM == apType) 		// TM Only
+			{
+				Resp2ApPrintln(STX_INFO_REQ + MAINMOT_INFO_READ + String(defaultTorqueMotor)+"%");	// 메인모터 최소값
+ 				Resp2ApPrintln(STX_INFO_REQ + BLDC_MOT_LIMIT_READ + String(bldcLimitVal)+"%");		// BLDC제한 값 출력
+			}
+			//
+
+			break;
+
+		// TBD 2~99 : Reserved
+
+		default:
+			break;
+	}
+	
+}
+
+void anaRestDistance(String msg)
+{
+	
+	//Log
+	restPowerDist = msg.substring(5,(5+3)).toInt();
+	if( 10 > restPowerDist ) { restPowerDist = 10; }
+	if(200 < restPowerDist ) { restPowerDist = 200; }
+
+
+	LogPrintln(" AP] RestD Dist: ," + String(restPowerDist) + " [/M]");
+
+}
+
+
+
+//
+// Angle(Servo) Control BY AP COMMAND
+void ana_AngleControl( String msg )
+{
+
+}
+
+//
+// MAIN(TORQ) by AP COMMAND
+//	$02ddd%  ddd:duty 3자리
+//		+TTTT%	TTTT: 없는 경우, 있는 경우 [ms]후 정지
+//
+void ana_MainMotControl( String msg )
+{
+	int recvTorq;
+	unsigned int onTime = 0;
+	  	//recvTorq = msg.substring(3).toInt();		// 
+	  	recvTorq = msg.substring(3,(3+3)).toInt();		// Duty
+	  	// TTTT[ms]있으면 시간제어 추가
+		onTime = (unsigned int)msg.substring(6).toInt();
+	  	if(0 != onTime)	// TBD ?
+	  	{
+	  	}
+		else
+		{
+		}
+
+//	int torq = reqTorqueMotor;
+	int torq = recvTorq;		// 출력Torq저장
+
+	// 수신데이타가 "0"보다 큰 경우만 저장.
+	if(0 < recvTorq)
+	{
+		reqTorqueMotor = recvTorq;
+		recv_TorqMotor_Flag = 1;
+	}
+	// Default보다 작으면 DEFAULT저장
+	//if(DEFAULT_TORQ > reqTorqueMotor) 	{ reqTorqueMotor = DEFAULT_TORQ; }
+	if(defaultTorqueMotor > reqTorqueMotor) 	{ reqTorqueMotor = defaultTorqueMotor; }
+
+	//--- AP_MOT_CON
+		  	// FW입질제어중, 장치장애확인중, 대기중토크OFF제어중
+			if(exeBite || devReadychkFlag || holdOnPtnAll_Flag || stbyTorqOffControl_Flag)
+			{
+				// NA - FW Control
+			}
+			else	// Not Bite, AP Control
+			{
+				torqMotor.setValue(torq);
+				if(onTime && (AP_IS_TM == apType))
+				{
+					torqMot_OffControlStart(onTime);
+				}
+			}
+		
+		  Resp2ApPrintln(msg+"%");
+	//--- NOT AP MOT CONT ( FW SELF MOT CONT LOGIC )
+	
+	  //LogPrintln(" AP] torq_ " + String(torq) + " /255 Duty");
+
+}
+
+#define AP_BBN_CMD_OFF 0
+#define AP_BBN_CMD_CW 1
+#define AP_BBN_CMD_CCW 2
+#define AP_BBN_CMD_MAX 3
+
+static String reqBobbinMsg;
+// Bite PTN_2 PreCheck Control
+//	$04
+void ana_BobbinControl_Check(String msg)
+{
+	reqBobbinMsg = msg;
+	// TBD : Dir, Value Save
+	
+		if(exeBite || devReadychkFlag )
+		{
+			// NA - FW Control
+		}
+		else	// Not Bite, AP Control
+		{
+			ana_BobbinControl(msg);
+		}
+
+}
+
+#define AP_LM_CMD_OFF 	0
+#define AP_LM_CMD_CW 	1
+#define AP_LM_CMD_CCW 	2
+#define AP_LM_CMD_CW_DD 	3
+#define AP_LM_CMD_CCW_DD 	4
+#define AP_LM_CMD_ACT 		5
+#define AP_LM_CMD_MAX 	6
+
+
+
+static String reqLmMotMsg;
+void ana_LineMotControl_Check(String msg)
+{
+}
+
+//
+// $04ADDDTTTT%
+//
+void ana_BobbinControl(String msg)
+{
+
+	String respMsg = "";
+	
+	int act = msg.substring(3,(3+1)).toInt();
+	if(0 > act ) { act = 4; }		// Not Action
+	int duty = msg.substring(4,(4+3)).toInt();
+	// Range Check
+	if(0 > duty) { duty = 0; }
+	if(255 < duty) { duty = 255; }
+	int onTime = msg.substring(7,(7+4)).toInt();
+	if(0 > onTime ) { onTime = 0; }		// Not STOP
+
+	// TBD Para NG Control
+	// if(paraNgFlag)
+	{
+		// Error
+		// return;
+	}
+
+	LogPrintln(" AP] BLDCo " + msg);
+
+	if(0) { }	// dummy
+	
+	else if(AP_BBN_CMD_OFF == act)
+	{
+		bbnMotor.offBldc();
+	}
+	else if(AP_BBN_CMD_CW == act)	// CW
+	{
+		bbnMotor.onBldc(BBN_MOT_CW, duty);
+		if(onTime) { bbnMotor_OffTime_Start(onTime); }
+	}
+	else if(AP_BBN_CMD_CCW == act)	// CCW
+	{
+		bbnMotor.onBldc(BBN_MOT_CCW, duty);
+		if(onTime) { bbnMotor_OffTime_Start(onTime); }
+	}
+	else
+	{
+		// Error . NA
+	}
+
+	if(AP_BBN_CMD_MAX > act)
+	{
+		respMsg = msg.substring(0,(0+4)) + fillZero2String3Char(bbnMotor.sbbnOut) + msg.substring(7) + "%";
+		Resp2ApPrintln(respMsg);	// Resp at Valid CMD only
+	}
+	
+}
+
+
+//-----------------------------------------------
+//
+//  Ana AP CMD, LM_MOT_CMD
+//
+//	=== LM MOT($07xx)
+//-----------------------------------------------
+
+
+#define END_TM_DUTY_OFF DEFAULT_TORQ	// End TM Duty  0 = OFF
+#define DUTY2SPD_RATE	(1)		// 1 비율
+
+#define DEFAULT_LM_PWR	35	// DEFAULT DUTY
+//-----------------------------------------------
+void ana_LmMotControl(String msg)
+{
+}
+
+
+
+// TBD-LM
+void lmHome_Control_Start(int _init, int tmReqDuty)
+{
+	endTmReqDuty = tmReqDuty;
+	lmHomeStep = STEP_START;
+	lmHome_Init = _init;
+	lmHome_Flag = 1;
+}
+void lmHome_Control_Stop()
+{
+	lmHomeStep = STEP_IDLE;
+	lmHome_Flag = 0;
+}
+
+// 화면 -우 =>, 구동 -좌측
+void lmLeft_Control_Start(int fish, int pwr, int ReqTm)
+{
+	lmFishLevel = fish;
+	//lmLeftDuty = (spd / DUTY2SPD_RATE);
+	lmLeftDuty = (pwr);
+	leftEndTmReqDuty = ReqTm;
+	lmLeftStep = STEP_START;
+	lmLeft_Flag = 1;
+	if(LM_PRIORITY_NO == lmPriority) { lmPriority = LM_PRIORITY_LEFT; }
+}
+void lmLeft_Control_Return()
+{
+	lmLeftStep = LM_LEFT_HOME_RETURN;
+	lmLeft_Flag = 1;
+}
+void lmLeft_Control_Stop()
+{
+	lmLeftStep = STEP_IDLE;
+	lmLeft_Flag = 0;
+}
+
+
+// 화면 -좌, 구동 -우측
+void lmRight_Control_Start(int fish, int pwr, int ReqTm)
+{
+	lmFishLevel = fish;
+	//lmRightDuty = (spd / DUTY2SPD_RATE);
+	lmRightDuty = (pwr);
+	rightEndTmReqDuty = ReqTm;
+	lmRightStep = STEP_START;
+	lmRight_Flag = 1;
+	if(LM_PRIORITY_NO == lmPriority) { lmPriority = LM_PRIORITY_RIGHT; }
+}
+void lmRight_Control_Return()
+{
+	lmRightStep = LM_RIGHT_HOME_RETURN;
+	lmRight_Flag = 1;
+}
+
+void lmRight_Control_Stop()
+{
+	lmRightStep = STEP_IDLE;
+	lmRight_Flag = 0;
+}
+
+// TBD-LM, CENTER CONTROL
+void lmCenter_Control_Start(int fish, int pwr)
+{
+}
+void lmCenter_Control_Stop()
+{
+}
+
+
+void lmReturn_Control_Start(int pwr)
+{
+	stLmReturnTbl.lm = pwr;		// Return LM Duty SET
+	if(0) {}
+	else if(LM_POSI_RIGHT <= lmPosi) { lmRightStep = LM_RIGHT_HOME_RETURN; }
+	else if(LM_POSI_LEFT <= lmPosi) { lmLeftStep = LM_LEFT_HOME_RETURN; }
+	else { lmHome_Control_Start(0, reqTorqueMotor); }		
+}
+void lmReturn_Control_Stop()
+{
+	lmReturnStep = STEP_IDLE;
+	lmReturn_Flag = 0;
+}
+
+void lmHoldOn_Stop()
+{
+	lmHold_Stop_Flag = 1;		// AP 버티기 종료 CMD수신
+}
+
+
+// TBD-LM, NOT-USE
+void lmHome_Control_2()		//_ak : Action Kind
+{
+	static unsigned long _to;
+	static unsigned int lmMoveDir = 0;
+	static unsigned int lmHomeNextStep = 0;
+
+	int lmDuty=0;
+	int bmDuty=0;
+	int tmDuty=0;
+
+	
+	switch(lmHomeStep)
+	{
+		case STEP_IDLE:	// IDLE
+			break;
+			
+		case STEP_START:	// START (10)
+			lmHomeRptCnt = 0;
+			setTO(_to);
+			lmHomeStep = 11;
+			break;
+			
+		//상태 Check
+		case 11:
+			//Sensor Check
+			if(LM_HOME_SEN_ON == lev10_lmHome)
+			{
+				lmHomeStep = 90;	// OK END
+			}
+			else
+			{
+				lmMoveDir = LM_MOT_CW;		// Move L
+				if (LM_LEFT_SEN_ON == lev10_lmLeft)	//
+				{
+					lmMoveDir = LM_MOT_CCW;		// Move R
+				}
+				lmHomeStep = 12;
+			}
+			break;
+			
+		case 12:
+			lmDuty = LM_HOME_MOVE_DUTY;		// LM_HOME_MOVE_DUTY
+			lmMotor.onBldc(lmMoveDir, lmDuty);			// LM OFF
+			setTO(_to);
+			lmHomeStep = 13;
+			break;
+
+		case 13:
+			if(checkTO(_to, LM_HOME_TO_TIME))	// TO 처리, 5SEC
+			{
+				//Fail
+				lmHomeStep = 80;	// ERROR
+			}
+			else if (LM_HOME_SEN_ON == lev10_lmHome)
+			{
+				lmMotor.onBldc(LM_MOT_CW, 0);	// OFF
+				lmHomeStep = 19;
+				lmHomeNextStep = 20;	// Wire Home
+			}
+			else if (LM_LEFT_SEN_ON == lev10_lmLeft)
+			{
+				lmMotor.onBldc(LM_MOT_CW, 0);	// OFF
+				lmHomeStep = 19;
+				lmHomeNextStep = 11;	// Sensor Check
+			}
+			else if (LM_RIGHT_SEN_ON == lev10_lmRight)
+			{
+				// Error
+				//lmHomeStep = 80;	// ERROR
+
+				lmMotor.onBldc(LM_MOT_CW, 0);	// OFF
+				lmHomeStep = 19;
+				lmHomeNextStep = 11;	// Sensor Check
+			}
+			setTO(_to);			
+			break;
+
+		case 19:
+			if(checkTO(_to, LM_HOME_DIR_CHANGE_TIME))	// TO 처리
+			{
+				lmHomeStep = lmHomeNextStep;
+			}
+			break;
+			
+		case 20:	// TIMEOUT Check
+			//lmDuty = stLmDutyTbl[FISH_LVL_1][MOT_PWR_LVL_a].lm;
+			//bmDuty = stLmDutyTbl[FISH_LVL_1][MOT_PWR_LVL_a].bm;
+			//tmDuty = stLmDutyTbl[FISH_LVL_1][MOT_PWR_LVL_a].tm;
+			lmDuty = stLmHomeTbl.lm;		// LM DUTY=0 : OFF
+			bmDuty = stLmHomeTbl.bm;
+			tmDuty = stLmHomeTbl.tm;
+			
+			lmMotor.onBldc(LM_MOT_CW, lmDuty);			// LM OFF
+			bbnMotor.onBldc(BBN_MOT_CW, bmDuty);
+			torqMotor.on(tmDuty);
+
+			lmHomeRptCnt++;
+			
+			setTO(_to);
+			lmHomeStep = 30;
+			break;
+			
+		case 30:
+			if(checkTO(_to, LM_HOME_TO_TIME))	// TO 처리
+			{
+				setTO(_to);
+				if( LM_HOME_RETRY_CNT < lmHomeRptCnt)	{ lmHomeStep = 80; }	// goto ERROR_END
+				else {	lmHomeStep = 20; }	// Retry
+			}
+			else if(LM_HOME_SEN_ON == lev10_lmHome)	// SENOR ON
+			{
+				setTO(_to);
+				lmHomeStep = 40;	// goto STOP
+			}
+			break;
+			
+		case 40:	// MOT OFF WAIT
+			if(checkTO(_to, nvm01_home_stopWait_time))	// NVM시간
+			{
+				lmHomeStep = 90;	//
+			}
+			break;
+
+		case 50:	// DUMMY
+			break;
+
+		case 80:	// DUMMY
+			lmHomeNG_Flag = 1;
+			break;
+			
+
+		case 90:	// END
+			lmMotor.onBldc(LM_MOT_CW, 0);
+			bbnMotor.onBldc(BBN_MOT_CW, 0);
+			//torqMotor.on(0);
+			torqMotor.on(endTmReqDuty);		// Start시 요구된 Duty값 설정, PwrOn=0, WireReady=60, 그외는 AP요구값		
+
+			// Flage CLR & VAR Clear
+			lmHomeRptCnt = 0;
+			lmHome_Control_Stop();
+
+			lmPosition_Set(LM_POSI_HOME);
+			break;
+		default:
+			// ERROR (unknown Step)
+			break;
+	}
+}
+
+
+#define STEP_OK_END 99
+#define STEP_NG_END 98
+//
+//
+//	CALL 10 ms
+//
+void lmHome_Control()		//_ak : Action Kind
+{
+}
+
+void lmPosition_Set(int posi)
+{
+	lmPosi = posi;
+	// TBD-LM
+	//센서가 변경되는 경우 자동 Home복귀 처리는?
+}
+
+#define SEN_REPEAT_TIME 300 // 200	//50
+
+#define LEFT_MOVE_PULSE	 46
+static uint16_t nvm01_lm_return_stop = 1;
+static unsigned int lmLeftPulseCnt = LEFT_MOVE_PULSE;
+
+// TBD-LM
+// CONTROL - 좌측(CW)
+void lmLeft_Control()
+{
+}
+
+#define RIGHT_MOVE_PULSE		46
+static uint16_t nvm02_lm_return_stop = 1;
+static unsigned int lmRightPulseCnt = RIGHT_MOVE_PULSE;
+
+
+void lmRight_Control()
+{
+}
+
+void lmReturn_Control()
+{
+}
+
+
+ 
+//========================================
+//
+//
+void anaMotOutRateSet(String msg)
+{
+	unsigned int act;
+	unsigned int para1;
+	unsigned int para2;
+
+	act = msg.substring(3,(3+1)).toInt();
+	if(0 == act )	// REL
+	{
+		//para1 = 0;
+		//para2 = 0;
+		para1 = 20;		// 100% SET
+		para2 = 20;		// 100% SET
+	}
+	else			// TEST
+	{
+		para1 = msg.substring(4,(4+2)).toInt();
+		if(20 < para1 ) { para1 = 20; }
+		para2 = msg.substring(6,(6+2)).toInt();
+		if(20 < para2 ) { para2 = 20; }		
+	}
+
+	motTestAct = act;	// 0 - Rel, 1- Test
+	motTestMainIdx = para1; // 1 ~ 20
+	motTestBbnIdx = para2;	// 1 ~ 20
+
+	//LogPrintln(" LG] MktT2 Test:" + String(motTestAct) +" Mi:"+String(motTestMainIdx) +" Bi:"+String(motTestBbnIdx));
+	LogPrintln(" LG] MktT3 Test:" + String(motTestAct) +" Mi:"+String(motTestMainIdx) +" Bi:"+String(motTestBbnIdx));
+}
+
+
+/*  =====================================
+              Slave Check Timer, 
+              If Only MAIN ENB , 
+             CALL 500ms => 1 SEC
+  ===================================== */
+
+void checkRodTimer()
+{
+
+	String rodConnMsg = "-1";
+	String imuConnMsg = "-1";
+	String batMsg = "-1";
+
+
+  	//=== 1) Slave NOT SLEEP REQ = Sleep Check, Onlky GAME_ENB 
+  	// TBD, 불필요?
+  	// Enable일 경우만 Slave Alive Check 보냄. 
+ 	if (isGameEnable)		  // if Main Enable
+	{
+	}
+	else
+	{
+	}
+
+
+	//=== 3) CHANGE ROD CONN, Send Only Change, Include SLEEP
+	// 릴 연결 상태 변화 처리
+	if (old_rod_conn_status != rod_conn_status)
+	{
+		//rod_conn_status = (new_rod_conn_status & ROD_STATUS_MASK) ;
+		//rod_conn_status_reason = (new_rod_conn_status & ROD_DISCONN_REASON_MASK);
+
+		//1) Rod 연결상태 변화 통지.
+		if (ROD_CONN == rod_conn_status)		//모름,끊김 =>  ROD CONN
+		{
+			//sndMsg = RESP_STX_ROD_CONN + "11111" + battLvlStr + "%";		// SLAVE CONN, with BAT Level
+			rodConnMsg = RESP_STX_ROD_CONN + STATE_CONNECTED;
+
+		}
+		else	// DISCONN ? or UNKNOWN			// ? / ? => 모름 혹은 끊김
+		{
+			rodConnMsg = RESP_STX_ROD_CONN + STATE_DISCONN;
+		  
+			// ROD연결 끊김시 배터리 "-1" 설정
+			//ibatteryLvl = UNKNOWN_2;
+			//battLvlStr = "-1";
+		}
+		rodConnMsg += "%";
+		StsSendPrintln(rodConnMsg); 		// Send to PC : ROD_CONN
+		LogPrintln(" LG] SLCN3 " + rodConnMsg + ", o,c:" + String(old_rod_conn_status) + "," + String(rod_conn_status));	  // LOG-SERIAL1
+
+		// 2) Rod연결 상태 변화 , BAT LEVEL SEND at ROD CHANGE 
+		if (ROD_CONN == rod_conn_status)		// => 연결로 변화, ROD CONN
+		{
+			batMsg = STX_BAT_LVL + battLvlStr + "%";	// 연결시 현재 잔량값(0~99) 통지
+			StsSendPrintln(batMsg); 	// Send to PC : BAT LEVEL
+		}
+		else									// => 모름,끊김으로 변화
+		{
+			batMsg = STX_BAT_LVL + "-2%";				// 연결끊김 혹은 모름시 "-2" 통지
+			StsSendPrintln(batMsg); 	// Send to PC : BAT LEVEL
+		}
+		LogPrintln(" LG] RODCN bat:" + batMsg);
+
+		// ROD연결 변화시, 무조건 배터리 충전 : 변화없음 통지
+		batMsg = STX_BAT_LVL + BAT_STR_CHAGER_NOCHANGE;
+		StsSendPrintln(batMsg); // SEND to PC		
+
+		old_rod_conn_status = rod_conn_status;	// Save Change Status
+	}
+
+	// === 4) NOT CHANGE BATT LEVEL
+	if(oldibatteryLvl != ibatteryLvl)
+	{
+		String logStr;
+
+		// ROD상태 변경, 배터리 값 변경 순서에 주의할 것
+		if (ROD_UNKNOWN == rod_conn_status )
+		{		
+			batMsg = STX_BAT_LVL + "-1%";
+			StsSendPrintln(batMsg); 	// Send to PC : BAT LEVEL
+			logStr = " LG] ROD UNKNOWN";
+			
+			// 배터리 변화, ROD연결모름시, 변화없음 통지(POWER ON처리)
+			batMsg = STX_BAT_LVL + BAT_STR_CHAGER_NOCHANGE;
+			StsSendPrintln(batMsg); // SEND to PC		
+
+		}
+		else		// 연결 혹은 끊김 상태때.
+		{
+			//rodConnMsg = RESP_STX_ROD_CONN + "11111" + battLvlStr + "%";	// SLAVE CONN, with BAT Level
+			batMsg = STX_BAT_LVL + battLvlStr + "%";
+			StsSendPrintln(batMsg); 	// Send to PC : BAT LEVEL
+			logStr = " LG] RODCN";
+
+			// 배터리 변화, ROD연결끊김씨, 변화없음 통지(POWER ON처리)
+			if(ROD_DISCONN == rod_conn_status) // 릴 연결시
+			{
+				batMsg = STX_BAT_LVL + BAT_STR_CHAGER_NOCHANGE;
+				StsSendPrintln(batMsg); // SEND to PC
+			}
+
+			// 배터리 변화 , ROD연결중 만,  충전기 상태 : 충전(+), 사용(-) 판단 및 AP통지
+			else if(ROD_CONN == rod_conn_status)	// 릴 연결시
+			{
+				//if((UNKNOWN != oldibatteryLvl) && ((oldibatteryLvl+1) < ibatteryLvl))	// + : 충전중 (+ 2이상 변화)
+				if((UNKNOWN != ibatChargeLvl) && ((ibatChargeLvl+3) < ibatteryLvl))	// + : 충전중 (+ 4이상 변화)
+				//if((oldibatteryLvl+2) < ibatteryLvl)	// + : 충전중 (+ 3이상 변화)
+				{
+					ibatChargeLvl = ibatteryLvl;		//충전표시용 잔량값 갱신
+					//respMsg = STX_BAT_LVL + "-4%";	// 2 char
+					batMsg = STX_BAT_LVL + BAT_STR_CHAGER_CHANGING;
+					StsSendPrintln(batMsg);	// SEND to PC
+				}
+				//else if((UNKNOWN != oldibatteryLvl) && ((oldibatteryLvl-1) > ibatteryLvl))	// - 사용중 (-2이상 변화)
+				else if((UNKNOWN != ibatChargeLvl) && ((ibatChargeLvl-1) > ibatteryLvl))	// - 사용중 (-2이상 변화)
+				//else if((oldibatteryLvl-2) > ibatteryLvl)	// - 사용중 (-3이상 변화)
+				{
+					ibatChargeLvl = ibatteryLvl;		//충전표시용 잔량값 갱신
+					//respMsg = STX_BAT_LVL + "-5%";	// 2 char
+					batMsg = STX_BAT_LVL + BAT_STR_CHAGER_USE;
+					StsSendPrintln(batMsg);	// SEND to PC
+				}
+			}	
+
+		}
+
+			LogPrintln(logStr +  ",bat o/c/c:" + String(oldibatteryLvl)+","+String(ibatteryLvl)+","+String(ibatChargeLvl));
+		oldibatteryLvl = ibatteryLvl;
+		if(UNKNOWN == ibatChargeLvl) { ibatChargeLvl = ibatteryLvl; }		//충전표시용 잔량값 갱신
+	}
+
+
+	//== 5) Send IMU
+	if(oldimu_conn_status != imu_conn_status)
+	{
+		imuConnMsg = RESP_STX_IMU_CONNECT;
+		if(CONNECT == imu_conn_status) { imuConnMsg +=  STATE_CONNECTED; }
+		else							{ imuConnMsg +=  STATE_DISCONN;   }
+		imuConnMsg += "%";
+
+		StsSendPrintln(imuConnMsg); 		// Send to PC : IMU_CONN
+		// save old status
+		oldimu_conn_status = imu_conn_status;
+	}
+	
+}
+
+
+void set_rod_conn_status(unsigned int sts)
+{
+	//rod_conn_status = (sts + reason);
+	rod_conn_status = (sts);
+}
+
+//===========NOT USE============
+/*-----------------------------------------------------------------
+	Operation Condition Check
+	: NOT USE
+------------------------------------------------------------------*/
+void condition_fw_check_10ms()
+{
+
+	// Condition Check
+	// 1) Casting : Right Button 400ms ON
+	if( 1 == cntRightButtonOn && 0 == cntRightButtonOff)
+	{
+		rightBtnOnCount++;
+	}
+	else if (0 == cntRightButtonOn && 1 == cntRightButtonOff )
+	{
+		if(40 < rightBtnOnCount)  // Upto 400ms
+		{
+			exeWave = 1;
+			gameStatus = GAME_WAVE;
+			waveType_TorqSet();
+			
+			LogPrintln(" AP] ExCst Wave TgTorq: " + String(stWaveTorqVal.tgTorq));	  // LOG-SERIAL1
+		}
+		rightBtnOnCount = 0;
+	}
+	else
+	{
+		rightBtnOnCount = 0;
+	}
+	
+	//3) Hit : Break Change ( 0 => Other Data(243 or 230))
+	if( reqBreakMotor != oldBreakMotor )
+	{
+		//recvBreak = 0;	// flag Clear
+		if( 0 == oldBreakMotor )		// Break Change ( 0 => Other Value)
+		{
+			// 3-1) HIT
+		  if( GAME_BITE == gameStatus)			// if ONLY Game BITE
+		  {
+			exeHit = 1;
+			gameStatus = GAME_HIT;
+		
+/*		
+// HUD Follow
+			// HIt Angel SET 
+			hitServoInterval = (hitServoAngle * 2 * 25 / 10);		// interval = Angle * [ 2.5ms/Degree ]
+			if(100 > hitServoInterval) { hitServoInterval = 100; }	// min = 100 ms
+*/
+			// Hit Fish Type SET & Targ Torq
+			if( fishTypeFixENB)		// Fix ?
+			{
+				if (!torqResistFix)		// Not FIX = Auto Caculation
+				{
+					stHitTorqVal.targetTorq = HitType_TorqSet(fishTypeFix);
+					if ( LEVEL_NORMAL == gameLevel)		// Level 2
+					{
+						stHitTorqVal.holdonTorq = ((stHitTorqVal.targetTorq * 12 / 10) + 28 );		// Level 2 Resist = Target*1.2 +28
+					}
+					else if ( LEVEL_HARD == gameLevel)	// Level 3
+					{
+						stHitTorqVal.holdonTorq = ((stHitTorqVal.targetTorq * 14 / 10) + 21 );		// Level 3 Resist = Target*1.4 +21
+					}
+					else						// Level 1
+					{
+						stHitTorqVal.holdonTorq = ((stHitTorqVal.targetTorq *  9 / 10) + 41 );		// Level 3 Resist = Target*0.9 +41
+					}
+					stHitTorqVal.midTorq = (stHitTorqVal.holdonTorq + stHitTorqVal.lowTorq)/2; 
+				}
+			}
+			else						// Auto ?
+			{
+				// 6) Find Fish Type AUTO from Break Val
+				if (!torqResistFix)		// Not FIX = Auto Caculation
+				{
+					// [NOT USE] FW Self Condition Check
+					fishTypeAuto = fishKind_autoFromBreak(reqBreakMotor);		// by Break Val
+					stHitTorqVal.targetTorq = HitType_TorqSet(fishTypeAuto); 
+					if ( LEVEL_NORMAL == gameLevel)		// Level 2
+					{
+						stHitTorqVal.holdonTorq = ((stHitTorqVal.targetTorq * 12 / 10) + 28 );		// Level 2 Resist = Target*1.2 +28
+					}
+					else if ( LEVEL_HARD == gameLevel)	// Level 3
+					{
+						stHitTorqVal.holdonTorq = ((stHitTorqVal.targetTorq * 14 / 10) + 21 );		// Level 3 Resist = Target*1.4 +21
+					}
+					else						// Level 1
+					{
+						stHitTorqVal.holdonTorq = ((stHitTorqVal.targetTorq *  9 / 10) + 41 );		// Level 3 Resist = Target*0.9 +41
+					}
+					stHitTorqVal.midTorq = (stHitTorqVal.holdonTorq + stHitTorqVal.lowTorq)/2; 
+				}
+			}
+			execHit_ResistRandomStart();						// Start Resist, After 3000 ms
+
+			// Beak Control ONCE HIT
+			execHit_SetBreakOnceStart();
+			
+			
+			LogPrintln(" AP] Exe_Hiting, FishKind = " + String(fishTypeAuto));   // LOG-SERIAL1
+			
+			LogPrintln(" AP] Exe_Hiting, Torq_FIX: " + String(torqResistFix) + ", Torq Resist: " + String(stHitTorqVal.holdonTorq) + ", low: " + String(stHitTorqVal.lowTorq) + ", Mid: " + String(stHitTorqVal.midTorq) );
+		  }
+		}
+
+		//4) Success or Fail : Break Change ( Other Data(243 or 230) => 0 )
+		else if ( 0 == reqBreakMotor )
+		{
+			exeSuccessFail = 1;
+			gameStatus = GAME_SUCCESS;
+			
+			LogPrintln(" AP] Exe_Success_or_Fail");   // LOG-SERIAL1
+		}
+		oldBreakMotor = reqBreakMotor;
+	}
+	
+	// 2) bite( touch a bait ) : Servo Change (+02 => Other Data(+50 or +70))
+	if( reqServoMotor != oldServoMotor)
+	{
+		if(2 == oldServoMotor || 0 == oldServoMotor)		// Servo Change +02 => Other Value, PoweOn 1st ( old is 0)
+		{
+			exeBite = 1;
+			gameStatus = GAME_BITE;
+			biteType_TorqSet(fishTypeFix);
+			
+			LogPrintln(" AP] Exe_Biting, Fish Kind: " + String(fishTypeFix));
+			
+			LogPrintln(" AP] Exe_Biting, DeepTorq: " + String(stBiteTorqVal.deepTorq) + " sh_Torq: " + String(stBiteTorqVal.shallowTorq));   // LOG-SERIAL1
+		}
+	
+		//5) End of Success or Fail : Servo Change Other => +02
+		else if ( 2 == reqServoMotor )	// GameOver
+		{
+			exeGameOver = 1; // Flag Clear
+			gameStatus = GAME_WAIT;
+			// End Process : All Exeute Flag CEAR
+			exeWave = 0;
+			exeBite = 0;
+			exeHit = 0;
+			exeResist = 0;
+			exeHoldon = 0;
+			exeRanding = 0;
+			exeSuccessFail = 0;
+			LogPrintln(" AP] Exe_Ending");   // LOG-SERIAL1
+			
+		}
+	
+		oldServoMotor = reqServoMotor;
+	}
+
+	// 7) HoldOn Condition
+	if( reqImuMeasFlag != oldImuMeasFlag)
+	{
+		if(exeHit)			// Only Whike HITING
+		{
+			if(0 == oldImuMeasFlag)		// Change 0 => OTHER Val: START
+			{
+				exeHoldon = 1;		// 버티기 시작
+				gameStatus = GAME_HOLDON;
+				if (!torqResistFix)		// Not FIX = Auto Caculation
+				{
+					stHitTorqVal.targetTorq = HitType_TorqSet(fishTypeAuto); 
+					if ( LEVEL_NORMAL == gameLevel)		// Level 2
+					{
+						stHitTorqVal.holdonTorq = ((stHitTorqVal.targetTorq * 12 / 10) + 28 );		// Level 2 Resist = Target*1.2 +28
+					}
+					else if ( LEVEL_HARD == gameLevel)	// Level 3
+					{
+						stHitTorqVal.holdonTorq = ((stHitTorqVal.targetTorq * 14 / 10) + 21 );		// Level 3 Resist = Target*1.4 +21
+					}
+					else						// Level 1
+					{
+						stHitTorqVal.holdonTorq = ((stHitTorqVal.targetTorq *  9 / 10) + 41 );		// Level 3 Resist = Target*0.9 +41
+					}
+					stHitTorqVal.midTorq = (stHitTorqVal.holdonTorq + stHitTorqVal.lowTorq)/2; 
+				}
+				
+				LogPrintln(" AP] Exe_Hoding ON, Fish Kind: " + String(fishTypeFix));   // LOG-SERIAL1
+				
+				LogPrintln(" AP] Exe_Hoding ON, Torq_FIX: " + String(torqResistFix) + ", Torq Resist: " + String(stHitTorqVal.holdonTorq) + ", low: " + String(stHitTorqVal.lowTorq) + ", Mid: " + String(stHitTorqVal.midTorq) );
+			}
+			else if(0 == reqImuMeasFlag)	// Change : OtherVal => 0
+			{
+				exeHoldOff = 1;		// 버티기 종료
+				
+				LogPrintln(" AP] Exe_Hoding OFF");	 // LOG-SERIAL1
+			}
+		}
+		oldImuMeasFlag = reqImuMeasFlag;
+	}
+}
+
+//--------------------------------------------
+//	NEW BITE & NEW HOLD for FW Control by AP PTN CMD
+//-------------------------------------------

@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TmVersion>V041</TmVersion>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>DFTestModule_$(TmVersion)</AssemblyName>
+    <Product>DF TestModule $(TmVersion)</Product>
+    <Version>0.4.1</Version>
+    <FileVersion>0.4.1.0</FileVersion>
+    <AssemblyVersion>0.4.1.0</AssemblyVersion>
+    <InformationalVersion>$(TmVersion)</InformationalVersion>
+    <RootNamespace>DFTestModule</RootNamespace>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishProfile>FolderProfile</PublishProfile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <PublishDir>$(MSBuildProjectDirectory)\..\bin\testmodule\$(Configuration)\</PublishDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\reel-top-v2.png" LogicalName="DFTestModule.Assets.reel-top-v2.png" />
+    <EmbeddedResource Include="Assets\reel-bottom.png" LogicalName="DFTestModule.Assets.reel-bottom.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+    <EmbeddedResource Include="esptool_V4.5.1.exe" LogicalName="DFTestModule.esptool_V4.5.1.exe" />
+  </ItemGroup>
+</Project>
+

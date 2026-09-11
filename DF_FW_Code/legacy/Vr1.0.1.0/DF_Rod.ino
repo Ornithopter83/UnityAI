@@ -1,0 +1,3065 @@
+#include "Common.h"
+#include "SwitchButton.h"
+#include "Encoder.h"
+#include "ENow.h"
+#include "Potentiometer.h"
+#include "EB_IMU.h"
+#include "Battery.h"
+#include "Version.h"
+
+// Create Object
+ENow eNow;
+Encoder encoder;
+SwitchButton sBtn;
+Potentiometer brkMotor;
+EB_IMU imu;
+Battery battery;
+
+// Define PID of CMD(Main-Slave)
+
+// Define STX of CMD
+#define STX_ENB_DIS     	"$01"
+#define STX_DEV_INFO_REQ    "$01"	// Add New_ROD_Board
+#define STX_BREAK_MOTOR 	"$05"
+#define STX_SWITCH      	"$06"
+#define STX_ROTARY      	"$07"
+#define DEF_STX_IMU_SETUP   "$08"
+
+String STX_IMU_SETUP =  	"$08";
+
+#if	(NEW_IF)	// CMD CHANGE
+	String STX_VERSION_READ = "$10";
+
+	String STX_GET_ADDR   = "$16";
+	String STX_SET_ADDR   = "$17";
+	String STX_IMU_SETSTRING   = "$91";
+#else
+	String STX_VERSION_READ = "$0A";
+	String STX_GET_ADDR   = "$11";
+	String STX_SET_ADDR   = "$12";
+	String STX_IMU_SETSTRING   = "$13";
+#endif
+
+// SetUp Cmd $90 [ USE SETUP Progam ] 
+String STX_SETUP_ENTRY 	  = "$9001";		// Setup Entry
+String STX_SETUP_EXIT 	  = "$9002";		// Setup Exit
+
+String STX_IMU_INTVAL_CHK = "$9010";		// IMU INTERVAL LOG
+
+String STX_SET_FILE	= "$F0";		// FILE SYSTEM Control
+
+String STX_SET_DATA	= "$F6";		// ROD SET DATA
+
+// Define RESP_STX
+#define RESP_STX_IMU_CONN "$05"
+#define RESP_STX_IMU_CONN_OK "$0511111111%"
+#define RESP_STX_IMU_CONN_NG "$0500000000%"
+#define RESP_STX_IMU_CONN_NG_SLEEP "$0500000009%"
+
+#define RESP_STX_SLEEP_ENT "009"
+
+
+// Define ENB/DIS
+#define GAME_ENABLE     "11111111"
+#define GAME_DISABLE    "00000000"
+
+// 
+#define RUN_TIMEOUT_ALIVE_CNT   10 		// 10 Sec
+#define RUN_TIMEOUT_SLEEP_CNT   15 		// 15 Sec
+
+unsigned short apType = AP_IS_DF;
+
+
+//-------------------------------------------------------
+//
+unsigned long curr_ms_tick = 0;
+unsigned long oldcurr_ms_tick = 0;
+
+unsigned long curr_us_tick = 0;
+
+// Test Delay Time
+unsigned long chk_ms_tick = 0;			// 1ms Check Curr tick
+
+//
+unsigned int run_time_1ms = 0;
+unsigned int run_time_10ms = 0;
+unsigned int run_time_100ms = 0;
+//unsigned int run_time_500ms = 0;
+unsigned int run_time_1sec = 0;
+
+unsigned int sys_1ms_cnt = 0;				// 1ms	// TBD
+unsigned int sys_10ms_cnt = 0;				// 10ms
+unsigned int sys_100ms_cnt = 0;				// 100ms
+unsigned int sys_500ms_cnt = 0;				// 500ms
+unsigned int sys_1sec_cnt = 0;				// Sys 1sec Counter
+
+//unsigned int local_10secCnt = 0;
+
+
+//
+#define RUN_TIME_10MS_TICK		10		//
+#define RUN_TIME_100MS_TICK		100		//
+#define RUN_TIME_1SEC_TICK		1000		// 1 Sec = 1000ms
+
+//-------------------------------------------------------
+
+// === Out Port Sts 
+unsigned short led1Grn_OutSts = 0;
+unsigned short led2Red_OutSts = 0;
+
+unsigned short btnLFLedRed_OutSts = BTN_LED_OFF;
+unsigned short btnRTLedBlue_OutSts = BTN_LED_OFF;
+
+//-------------------------------------------------------
+
+// Rod PowerOn Flag
+unsigned int rodPowerOnFlag = 0;		// Power On Once Only
+
+// Send SLAVE_ALIVE at main ENB
+int rod_Alive_recv_over_cnt = 0;				// Slave Alive 1sec Counter
+int run_time_sleep_over_cnt = 0;
+
+now_message now_msg;
+
+//
+String now_msg_str_cb = "";
+String now_msg_str = "";
+volatile int now_rcv_id_cb = 0;
+volatile int now_rcv_id = 0;
+
+char nowChStr[128] = {0,};		// NOW RECV IMPROVE
+
+
+
+bool isEnable = false;
+bool isSetupMode = false;
+
+//Define MAIN_STATUS
+#define MAIN_STS_UNKNOWN	-1
+#define MAIN_STS_CONN		0
+#define MAIN_STS_DISCONN	1
+#define MAIN_STS_PWRON		2	// PowerOn (?)
+
+
+int mainStatus = UNKNOWN;
+int oldmainStatus = UNKNOWN;
+int mainPollingTOcnt = 0;
+
+int rodSelfStatus = UNKNOWN;
+int oldrodSelfStatus = UNKNOWN;
+int rodPollingTOcnt = 0;
+
+// IMU Connetion, Polling
+#define IMU_UNKNOWN_2  -2
+#define IMU_UNKNOWN  -1
+#define IMU_CONN      0		// 0- ok = Conection
+#define IMU_DISCONN   1		// not 0
+
+
+int imuStatus = UNKNOWN;			// Default (1 = CONN )
+int oldimuStatus = UNKNOWN;		// Not Send IMU_DIS at 1st PowerON
+int imuPollingTOcnt = 0;
+
+// define FLAG
+#define IMU_CONN_TIMEOUT_CNT   5 // 5 // 3 // 5	// 5 Sec -> 6Sec
+
+unsigned short fRecvImuData = 0;			// flag RECV IMU DATA, for IMU CONNECT
+unsigned short flagIMUSTOP = 0;			// flag IMU STOP, for SETUP MODE
+
+// SLAVE MODE
+#define NORMAL_MODE 	0
+#define SETUP_MODE  	1		// include !=0
+int rodMode = NORMAL_MODE;
+
+
+String L_BTN_UP = "$0600000001%";		// LEFT_UP
+String L_BTN_DN = "$0600000010%";		// LEFT_DOWN
+String R_BTN_UP = "$0600000100%";		// RIGHT_UP
+String R_BTN_DN = "$0600001000%";		// RIGHT_DOWN
+
+String ROD_ENC_CNT = "$0700000+";
+
+#define TESTROD_START_STEP	9 // 10	// START STEP
+unsigned short iocStep = TESTROD_START_STEP;			// START_STEP
+unsigned long rod_ImuCycleCnt = 0;	// Log Out
+
+// 
+unsigned short recvInfoSeqStep = 0;	// nowSend Step
+
+
+// IMU Interval Check & LOG OUT
+unsigned short imuIntervalCheckCnt = 0;
+unsigned long measureCnt = 0;
+
+
+#if (BDTYPE_DETECT)
+	int rodBoardType = NEW_BOARD_2;		// old(0), New(1)
+#else
+	const int rodBoardType = NEW_BOARD_2;		//NEW(1) FIX
+#endif
+
+int buttonType = BUTTON_V2;		// New
+int breakType = BREAK_NO;	// New
+int battType = BATT_800_V2;		// New
+#ifdef	REEL_ENC_V3
+int reelEncType = REEL_ENC_V3;		// New(Vr1.0.1.0)
+#else
+int reelEncType = REEL_ENC_V2;		// New
+#endif
+
+//---REGI ROD
+unsigned int rodRegistMode = 0;		// 0- Normal, 1-Addr Setup
+
+//-- VRT MOT 
+unsigned int vrt_cont_flag = 0;
+unsigned int vrt_ap_req_cnt = 6;
+unsigned int vrt_ap_req_on_time = 100;
+unsigned int vrt_ap_req_off_time = 50;
+//-- BTN LED
+#define BTN_LED_MAX_SIZE 2
+unsigned int btn_led_flag[BTN_LED_MAX_SIZE] = {0,0};
+unsigned int btn_led_ap_req_cnt[BTN_LED_MAX_SIZE] = {6,6};
+unsigned int btn_led_ap_req_on_time[BTN_LED_MAX_SIZE] = {50,50};
+unsigned int btn_led_ap_req_off_time[BTN_LED_MAX_SIZE] = {50,50};
+
+
+//===============EXTERN=======================
+extern uint8_t main_board_addr[];
+extern uint8_t broad_cast_addr[];
+
+#if (TEST_VRT_MOT)
+void testVrtMot_Start()
+{
+	digitalWrite(VRT_MOT_ON_PIN, VRT_MOT_OFF);		// VRT MOT OFF
+	rodVrtControl_Stop();
+	rodVrtControl_Start(1, 1000, 10);		// 1회 , on-1초, off-10ms
+}
+
+#endif
+
+//===========================================================
+//
+//	
+//	Call 100 MS
+void execRod_ImuOutCycle()
+{
+
+	static unsigned short oldiocStep = 0;
+	static unsigned long _to;
+	static unsigned int _rptCnt=0;
+	static unsigned int _imuCnt=0;
+	static unsigned int _encCnt=0;
+	String sndStr;
+	
+	#if LOG_FUNC_STEP
+		if(oldiocStep != iocStep)
+		{
+			LogPrintln(" LG] FUNCS ImuOutCyle, " + String(oldiocStep) + "/" + String(iocStep) + " old/cur");
+			oldiocStep = iocStep;
+		}
+	#endif
+	
+	switch(iocStep)
+	{
+		case 0:		// IDLE
+			break;
+			
+		case TESTROD_START_STEP:	// START, R BTN
+			//digitalWrite(LED2_G_PIN, HIGH);
+			led2Red_OutSts = HIGH;
+			digitalWrite(LED2_RED_PIN, led2Red_OutSts);
+			rod_ImuCycleCnt++;
+			if(1) { LogPrintln(" LG] RODCYC, " + String(rod_ImuCycleCnt) + " cnt"); }
+			_rptCnt = 0;
+			_imuCnt = 0;
+			iocStep = 10;
+			break;
+			
+		//case TESTROD_START_STEP:	// START, R BTN
+		case 10:	// START, R BTN
+			_rptCnt++;
+			if((3000/500) < _rptCnt)
+			//if((1000/500) < _rptCnt)
+			{
+				//digitalWrite(LED2_G_PIN, LOW);
+				led2Red_OutSts = LOW;
+				digitalWrite(LED2_RED_PIN, led2Red_OutSts);
+				_rptCnt = 0;
+				iocStep = 20;	// Next STEP
+			}
+			else
+			{
+				if(_rptCnt % 2) btnChangeCallback(R_BTN_UP);		// R Button
+				else			btnChangeCallback(R_BTN_DN);		// R Button
+				setTO(_to);
+				iocStep = 11;	
+			}
+			break;
+		case 11:
+			if(checkTO(_to, 500))
+			//if(checkTO(_to, 200))
+			{
+				iocStep = 10;					
+			}
+			break;
+
+		case 20:			// IMU 10 Sec ( ON - 5sec + OFF - 5 sec )
+			//Set IMU OUT
+			imu.isMeasure =  true;		// IMU ON
+			setTO(_to);			
+			iocStep = 21;					
+			break;
+		case 21:
+			if(checkTO(_to, 67*100))	// 6.7 SEC
+			//if(checkTO(_to, 200))
+			{
+				imu.isMeasure =  false;		// IMU OFF
+				setTO(_to); 		
+				iocStep = 22;					
+			}
+			break;
+		case 22:
+			if(checkTO(_to, 33*100))	// 3.3 SEC
+			//if(checkTO(_to, 10*20))	//
+			{
+				imu.isMeasure = false;
+				_rptCnt = 0;
+				_imuCnt++;
+				iocStep = 30;	// default
+				if(0) {}
+				else if(1 == _imuCnt) { iocStep = 30; }	// L BTN				
+				else if(2 == _imuCnt) { iocStep = 40; } 	// Hit_Encoder		
+				else if(3 == _imuCnt) { iocStep = 40; } 	// Encoder		
+				else if(4 == _imuCnt) { iocStep = 40; } 	// Encoder		
+				else if(5 == _imuCnt) { iocStep = 40; } 	// Encoder		
+				else if(6 == _imuCnt) { iocStep = 40; }		// Encoder		
+				else if(7 == _imuCnt) { iocStep = 10; }	// R BTN		
+				else if(7 < _imuCnt) { iocStep = 50; }	// END
+				//LogPrintln(" LG] _step 10 sec");
+			}
+			break;
+
+		case 30:	// L BTN
+			_rptCnt++;
+			if((3000/500) < _rptCnt)
+			//if((1000/500) < _rptCnt)
+			{
+				_rptCnt = 0;
+				iocStep = 20;	// Next IMU
+			}
+			else
+			{
+				if(_rptCnt % 2) btnChangeCallback(L_BTN_UP);		// R Button
+				else			btnChangeCallback(L_BTN_DN);		// R Button
+				setTO(_to);
+				iocStep = 31;	
+			}
+			break;
+		case 31:
+			if(checkTO(_to, 500))
+			{
+				iocStep = 30;					
+			}
+			break;
+
+		case 40:	// Encoder
+			_rptCnt++;
+			if((3000/500) < _rptCnt)		// 3sec
+			//if((1000/500) < _rptCnt)		// 3sec
+			{
+				_rptCnt = 0;
+				iocStep = 20;	// Next STEP
+			}
+			else
+			{ 
+				_encCnt = encoder.count;
+				_encCnt++;
+				if(20 < _encCnt) { _encCnt = 0; }
+				encoder.count = _encCnt;
+				sndStr = ROD_ENC_CNT + encoder.fillZero2char(_encCnt) + "%";
+				rotateChangeCallback(sndStr);		// Enc Count UP
+				setTO(_to);
+				iocStep = 41;	
+			}
+			break;
+		case 41:
+			if(checkTO(_to, 500))
+			{
+				iocStep = 40;					
+			}
+			break;
+
+			
+		case 50:
+			// CLEAR VAR
+			_imuCnt = 0;
+			_rptCnt = 0;
+			iocStep = 9;	// Start
+			break;
+			
+		case 60:
+			break;
+
+		case 90:
+			break;
+			
+		default:
+			break;
+	}
+}
+
+
+
+String zeroFill4Char(unsigned int _val)
+{
+	// Check Range
+ 	if(9999 < _val) { _val = 9999; }
+	
+	// Change to String 4 Char
+  if(0) {}	// dummy
+  else if (  10 > _val) { return "000" + String(_val); }
+  else if ( 100 > _val) { return "00" + String(_val); }
+  else if (1000 > _val) { return "0" + String(_val); }
+  else 					{ return String(_val); }
+
+}
+
+//===================================================================================================
+//		NOW CB RCV/SENT
+//
+//===================================================================================================
+int rodBtnLong_nowSent = 0;
+String old_send_now_id = "00";
+//-- Sent Call Back
+void sent_cb_esp_now_sts(const uint8_t* mac_addr, esp_now_send_status_t status)
+{
+	#if (LOG_NOW_CB_SENT_FAIL)
+		if(ESP_NOW_SEND_SUCCESS == status)	// ok
+		{
+			old_send_now_id = eNow.sendPid;		// CLR Old ID
+		}
+		else		// fail
+		{
+			LogPrintln(" nowSent Fail id:" + old_send_now_id + "->" + eNow.sendPid);
+			old_send_now_id = "00";
+		}
+	#endif
+	
+	#if (LOG_NOW_CB_SENT_REGI)
+		if(rodBtnLong_nowSent)
+		{
+			rodBtnLong_nowSent = 0;
+			String rts = (ESP_NOW_SEND_SUCCESS ==status ? "Ok" : "Fail");
+			LogPrintln(" LG] nowSent " + rts +",id:" + old_send_now_id + "->" + eNow.sendPid + "," + String(eNow.sendSeqNo) );		// Result, SeqNo, Addr_6
+		}
+	#endif
+}
+
+volatile int now_idx = 0;
+volatile int now_seq = 0;
+
+//-------------------------------------
+// --- Rcv Call back
+//-------------------------------------
+int now_overcnt = 0;
+void recv_cb_esp_now_msg(const uint8_t *mac_info, const uint8_t *data, int data_len)
+{
+
+#if (LOG_NOW_RCV_CB_US_CHK)
+	unsigned long rod_chk_us = micros();
+	unsigned long rod_chk_us2;
+#endif
+
+#if (LOG_NOW_RCV_OVER_WRITE)
+	// test Over Write
+	//if((-1) != now_rcv_id)	// Rcv Over Write
+	if(PID_NOT_RECVED != now_rcv_id_cb)	// Rcv Over Write
+	{
+		int old_now_rcv_id = now_rcv_id_cb;
+		now_overcnt++;
+		// ID추출
+		char ch1=(char)(*(data+0));
+		char ch2=(char)(*(data+1));
+		//LogPrintln(" LG] nowRcv Over, id->:" + String(now_rcv_id) + "," + String(*(data+32)));
+		//LogPrintln(" LG] nowRcv Over, id->:" + String(now_rcv_id) + "," + String(now_rcv_id) + "->" + String(*(data+0)) + String(*(data+1)));
+		LogPrintln(" LG] nowRcv Over Cnt:" + String(now_overcnt)+ ",id:" + String(old_now_rcv_id) + "->" + String(now_rcv_id_cb) + ",m:" + ch1 + ch2);
+	}
+#endif
+
+#if (0)	// ch TEST
+	if(0 == now_overcnt)
+	{
+		now_overcnt++;
+		char ch1=(char)(*(data+0));
+		char ch2=(char)(*(data+1));
+		//LogPrintln(" LG] nowRcv Over, id->:" + String(now_rcv_id) + "," + String(*(data+32)));
+		//LogPrintln(" LG] nowRcv Over, id->:" + String(now_rcv_id) + "," + String(now_rcv_id) + "->" + String(*(data+0)) + String(*(data+1)));
+		LogPrintln(" LG] nowRcv Over Cnt:" + String(now_overcnt)+ ",id" + String(old_now_rcv_id) + "," + String(now_rcv_id) + "->" + String(ch1) + String(ch2));
+	}
+#endif
+	
+#if 0	// NOT EFFECTIVE, NG
+	// 타겟 주소(설정된 주소)가 아닌경우 , 처리하지 않음
+	for(int i=5; i<-1; i--)
+	{ 
+		if(*(mac_info+i) != main_board_addr[i]) 	// notEQ SRC_MAC_ADDR
+		{
+			now_rcv_id = 0;	// not Processing Mesage
+			LogPrintln(" LG] != Addr:" + String(main_board_addr[i]) + "," + String(*(mac_info+i)));
+			return;
+		}
+	}
+	//
+#endif
+	
+	//*** Imp Memory Copy for Overflow,
+	char chStr[128];
+	memcpy(chStr, data, data_len);		// Save MSG
+	
+#if (NOW_RCV_IMPROVE)	// IMP
+	idx = 0;
+	for(int i=0; i<data_len; i++)
+	{
+		
+		char ch = *(data+i);
+		if('\r'==ch || '\n'==ch) {
+			now_idx = 127;	
+			now_seq = 53;
+		}
+		else if ('$'==ch) {		// Start
+			now_idx = -1;
+			now_seq = 50;
+		}
+		else if ('#'==ch) {		// END
+			if(50 == now_seq) {
+				now_seq = 51;
+				break;
+			}
+		}
+		else {
+			if(50 == now_seq) {
+				chStr[now_idx] = ch;
+			}
+		}
+			
+	}
+	if(51 != now_seq)	// $~~# 인 겨우만.
+	{
+		return;
+	}	// 처리 중지
+#endif	
+	chStr[data_len] = NULL;
+	now_msg_str_cb = String(chStr);
+	// id 추출
+	now_rcv_id_cb = now_msg_str_cb.substring(0,2).toInt();	// ID(String) => INT(id)
+
+	//memcpy(rcv_src_addr, mac_info, 6);				// Save Src Addr
+	//memcpy(rcv_dest_addr, (mac_info+6), 6);		// Save Dest Addr
+
+
+#if (LOG_NOW_RCV_CB_US_CHK)
+	rod_chk_us2 = micros();
+	LogPrintlnus(" LG] nowRcv Cb id:" +String(now_rcv_id_cb) + ",m:"+ now_msg_str_cb + ",us1:" + String(rod_chk_us2-rod_chk_us) + ",us2:" + String(micros()-rod_chk_us2));
+#endif
+
+#if (LOG_NOW_CB_RCV_MSG)
+	LogPrintln(" LG] nowRcv Cb id:" +String(now_rcv_id_cb) + ",m:"+ now_msg_str_cb );
+#endif
+
+}
+
+//== Button, Encoder, Imu Call back
+/*  =====================================
+      Sensor & Module Status Callback
+      ; Send to MAIN by eNow
+  ===================================== */
+void btnChangeCallback(String str) {
+  eNow.write(STR_PID_BUTTON, str);
+}
+
+void rotateChangeCallback(String str) {
+  eNow.write(STR_PID_ENCODE_CNT, str);
+}
+
+/*------------------------------------------------------------------------
+	Send IMU Data By eNOw ( SLAVE -> MAIN )
+------------------------------------------------------------------------*/
+void imuDataCallback(String pid, String str) {
+  eNow.write(pid, str);
+}
+
+//
+//
+//
+
+
+int rodAliveRcv_LedBlinkFlag = 0;
+
+#define ROD_STS_UNKNOWN	0
+#define ROD_STS_PWRON	1
+
+unsigned int rodStatus = ROD_STS_UNKNOWN;
+
+//
+// ROD SET DATA :  CYCLWE TEST($F6)
+//
+//unsigned short exeFlag_RodImuOutCycle = 1;		// TEST FW
+unsigned short exeFlag_RodImuOutCycle = 0;		// REL
+
+void setData_RodCycleTest(String msg)
+{
+	char kind = msg.charAt(0);
+	int act = msg.charAt(1);
+	
+	switch(kind)
+	{
+		case '0':
+			if(0 == act){	exeFlag_RodImuOutCycle = 0;	}	// $F600
+			else		{	exeFlag_RodImuOutCycle = 1; }	// $F601
+			break;
+
+		default:
+			break;
+	}
+}
+
+//
+//
+//
+void sendInfo_boardType()
+{
+	String msg;
+
+	if(OLD_BOARD_1 == rodBoardType) { msg = "000"; }
+	else {							  msg = "001"; }
+	eNow.write(STR_PID_BOARD_TYPE, msg);
+
+	#if LOG_CONN
+		LogPrintln(" LG] RodTyp " + String(rodBoardType) + "," + msg);
+	#endif
+}
+
+//
+//
+//
+void imuConnResp()
+{
+	String msg;
+
+	if(IMU_CONN == imuStatus)
+	{
+		//msg = RESP_STX_IMU_CONN_OK;
+		msg = "11";
+	}
+	else
+	{
+		//msg = RESP_STX_IMU_CONN_NG;
+		msg = "00";
+	}
+	eNow.write(STR_PID_IMU_CONN, msg);
+}
+
+
+
+
+//====================================================
+//
+//	MAIN=>SLAVE recv Msg : (ESP Now) Recv Data Hanlder ,  
+//====================================================
+int now_rcv_id_back = 0;
+void nowRecvHandler()
+{
+  
+	if(0 == now_rcv_id_cb)
+	{ 
+		return; 
+	}	// id가 "0"이 아닌 경우만 실행함.
+
+	//-- SAVE CB MSG(ID+MSG)
+	now_rcv_id = now_rcv_id_cb;
+	now_msg_str = now_msg_str_cb;
+
+	// ???
+	//-- CLR CB MSG
+	now_rcv_id_cb = 0;
+	now_msg_str_cb= "";
+
+	int notDefineCmdFlag = 0;
+	String cmd_str_data = now_msg_str.substring(2);
+
+#if (LOG_MAIN_RECV)
+	if(PID_ALIVE_CHK != now_rcv_id)
+	{
+		LogPrintln(" LG] nowRcv id:" + String(now_rcv_id_back) + "->" + String(now_rcv_id) + ",m:" + (now_msg_str));
+		now_rcv_id_back = now_rcv_id;
+	}
+#endif
+
+
+//======================================
+  // (10) Slave Alive Check
+  if(0) { /* Dummy */ }
+
+	//(30), OTHER_ROD_WRITE (BC ADDR : OTHER ROD -> ROD)
+  else if (PID_ROD_ADDR_WRITE == now_rcv_id)			// OTHER ROD
+  {
+	  #if (LOG_OTHER_ROD_NOT_EXEC)
+		LogPrintln(" LG] rodRg rcv " + (now_msg_str) + "NOT_EXEC");
+	  #endif
+  }
+	//(31), MAIN_ADDR_WRITE, MAN=>ROD
+  else if (PID_MAIN_ADDR_WRITE == now_rcv_id)			// 타겟주소 저장
+  {
+  	if(55 == rodRegistMode)	// RegiMode인 경우만
+  	{
+  		// T/O Stop
+  		rodRegistToStop();		// TO STOP
+  		
+		//String msgAddr = cmd_str_data.substring(0,(0+17));
+		String msgAddr = cmd_str_data;
+  		//1.주소 저장
+  		int ret = targetAddrWrite(msgAddr);
+	  	if((1000 != ret) && (!isSetupMode) )	// < NG & NORMAL>  WRITE_OK = 1000, WRITE_FAIL = 1001, 그외는 LENGTH
+	  	{
+			String logMsg = "";
+	  		if(1001 == ret)	logMsg = "Write Fail ";
+			else			logMsg = "Len Error ";
+			LogPrintln(" LG] Error_ TART ADDR " + logMsg + ",m:" + msgAddr + ",len:" + String(msgAddr.length()));
+	  	}
+		
+		//2-1. ADDR변경 STRING=>HEX for PEER
+		//2-2..Peer변경(TEST) -불필요.
+	#if 0
+		int peerRet = eNow.addPeerAddress(broad_cast_addr);
+		if (ESP_OK != peerRet)
+		{
+	  	LogPrintln(" LG] ERROR nowPeer ADD: " + String(peerRet));
+		}
+	#endif
+	
+		String wrtAddr = eNow.getTargetAddress();
+		LogPrintln(" LG] rodRg Addr:" + wrtAddr);
+
+		// 3. 대기 3초
+		rodRegi3secToStart();		// 3SEC후 Reset
+		
+		//4. Reset
+		//ESP.restart();
+  	}
+	else	// NOT ROD REGIST
+	{
+	  	// NA
+		#if (LOG_OTHER_ROD_NOT_EXEC)
+			LogPrintln(" LG] rodRg rcv " + (now_msg_str) + "NOT_EXEC");
+		#endif
+	}
+  }
+
+	// (33) AP/TM구분, xxYY
+	else if (PID_AP_MAIN_INFO == now_rcv_id)
+	{
+		short kind = cmd_str_data.substring(0,2).toInt();
+		short val = cmd_str_data.substring(2,4).toInt();
+		switch(kind)
+		{
+			case 1:	// AP/TM구분
+				apType = val;
+				LogPrintln(" lg] APTYPE " + String(apType) + (apType? ",TM":",DF"));
+				break;
+			
+			default:
+				break;
+		}
+	}
+
+	// (29) Reel Out All OFF
+  else if (PID_ROD_OUT_ALL_OFF == now_rcv_id)
+  {
+	int act = cmd_str_data.substring(0,(0+2)).toInt();
+	if(0 == act)
+	{
+		anaReelDeviceControl(act, cmd_str_data);
+	}
+	else
+	{
+		// error
+	}
+  }
+
+  
+  // ( 5 ) PWRON_1ST CMD => ALIVE/IMU/BAT/TYPE Resp
+  else if (PID_PWRON_1STCMD == now_rcv_id)			// 1. SLAVE ALIVE REQ For Each 500ms
+  {
+	// OFF Measure IMU
+	imu.isMeasure = false;		// IMU DATA OFF
+	#if (LOG_MAIN_IMU_ONOFF)
+		LogPrintln(" LG] MN_RCV ImuData OUT_OFF at MAIN RESET");
+	#endif
+	
+  	// 메인상태를 변경하여 이후 ALIVE수신시 - ALIVE송신/IMU/BAT/BdType를 100ms마다 송신함.
+  	mainStatus = MAIN_STS_PWRON;		// NEXT ALIVE 수신시 ROD INFo SEND
+	#if (LOG_MAIN_PWRON)
+		LogPrintln(" LG] MN_RCV MainPowerOn, PID = 5 ");
+	#endif
+
+	//rodStatus = ROD_STS_PWRON;
+
+  }
+
+	// ( 6 ) AP START : Resp IMU/BAT/TYPE Send
+  else if (PID_REQ_ROD_INFO == now_rcv_id)			//
+  {
+	// OFF Measure IMU
+ 	imu.isMeasure = false;		// IMU DATA OFF
+	#if (LOG_MAIN_IMU_ONOFF)
+		LogPrintln(" LG] MN_RCV ImuData OUT_OFF at AP START");
+	#endif
+
+ 	// IMU/BAT/BdType를 100ms마다 송신함.
+	recvInfoSeqStep = 1; 	// TBD, ROD_INFO_REQ & PID_ALIVE_CHK가 동시에 오는 경우는?
+	#if (LOG_MAIN_PWRON)
+ 		LogPrintln(" LG] RECV__ RODINFOREQ Ap Start, PID = 6 ");
+	#endif
+	
+  }
+
+  // (10) ALIVE CHK
+  else if (PID_ALIVE_CHK == now_rcv_id)			// 1. SLAVE ALIVE REQ For Each 1 SEC
+  {
+
+	// Alive Recived, Clear 1sec Counter
+	rod_Alive_recv_over_cnt = 0;			// OK = Clear OVER CNT at RECV ALIVE(MAIN ENB)
+	rodAliveRcv_LedBlinkFlag = 1;			// LED2 Display Check Flag
+
+	#if (LOG_ALIVE_CHK_CNT)
+		LogPrintln(" LG] AlvRcv Cnt:" +String(rod_Alive_recv_over_cnt));
+	#endif
+	
+	// 1) SEND ALIVE RESP
+	eNow.write(STR_PID_ALIVE_RESP, "");
+
+	// 2) 1st ALIVE RECV after MAIN PWR ON 1st CMD RECV
+	if(MAIN_STS_PWRON == mainStatus)
+	{
+		recvInfoSeqStep = 1; 		// IMU/BAT/TYPE 100ms SEND
+
+		// TBD, ROD_INFO_REQ & PID_ALIVE_CHK가 동시에 오는 경우는?
+	}
+	mainStatus = MAIN_STS_CONN;
+
+  }
+  
+  // (20) Version Read
+  else if (PID_SLAVE_VER_READ == now_rcv_id)
+  {
+	//eNow.write(STR_PID_SLAVE_VER_RESP_ROD, rodVer);		// Resp Ver_ROD(19)
+	String msg = rodVer;
+  	if(IMU_CONN == imuStatus)
+  	{
+		msg += ",";
+		msg += imu.getversion();
+		eNow.write(STR_PID_SLAVE_VER_RESP, msg);		// Resp Ver_IMU(20)
+	}
+	else
+	{
+	  	msg += ",Vi99.99.99";
+		eNow.write(STR_PID_SLAVE_VER_RESP, msg);		// Resp Ver_IMU(20)
+	}
+	LogPrintln( " lg] ver: " + msg);
+  }
+
+  // (11) NOT_USE : ROD PASS ID
+#if 0
+  // (11) CTRL NUM ( GAMENB:$01, BREAK:$05, IMUSET:$08 )
+  else if (PID_CTRL_NUM == now_rcv_id)	// ( *** )  Control ID
+  {
+    String cmdStr = cmd_str_data;
+	// NOT-USE : 1) Game ENB/DIS($01) - not use
+    if (cmdStr.startsWith(STX_ENB_DIS))		// 3. GAME ENB/DIS
+    {
+      if (cmdStr.endsWith(GAME_ENABLE))				// 3-1. GAME_ENB
+      {
+      	//imu.setStartStop(IMU_CONF_START);
+        isEnable = true;
+      }
+      else if (cmdStr.endsWith(GAME_DISABLE))		// 3-2. GAME_DIS
+      {
+      	//imu.setStartStop(IMU_CONF_STOP);
+        isEnable = false;
+      }
+      //      Serial.print("Ctrl Enable : ");
+      //      Serial.println(isEnable);
+      else
+      {
+      	// Parameter Error
+      }
+    }
+  }
+#endif
+
+	// PID SEP => 11-BREAK, 12-IMU DATA
+  else if (PID_ROD_BREAK == now_rcv_id)	// ( *** )  Control ID
+  {
+	// 2) Break Motor($05)
+    //else if (cmdStr.startsWith(STX_BREAK_MOTOR))// 4. BREAK MOT
+	int val = cmd_str_data.toInt();
+    {
+    	//if(isRodNewBoard())	// NEW ROD
+    	if(BREAK_NO == getBreakType())	// NEW ROD
+    	{
+    		// N.A
+    		#if (LOG_BRK_MOT)
+    		LogPrintln(" LG] IoType No Break Motor");
+			#endif
+    	}
+		else	// OLD ROD
+		{
+			//brkMotor.setValue(cmd_str_data);
+			brkMotor.setValue(val);
+			#if (LOG_RCV_BREAK_EXE)
+				LogPrintln( " lg] BRK:" + cmd_str_data);
+			#endif
+		}
+  	}
+	#if (LOG_OUT_OFF)
+		if(0 == val)
+		{
+			LogPrintln( " lg] OutOff Break OFF m:" + cmd_str_data);	
+		}
+	#endif
+  }
+
+	// (12) - IMU DATA / SET
+  else if (PID_ROD_IMU_DATA == now_rcv_id)	// ( *** )  Control ID
+  {
+	  // 3) IMU Setup($08)
+  	//else if (cmdStr.startsWith(STX_IMU_SETUP))  // 5. IMU
+  	{
+  		int act = cmd_str_data.substring(0,1).toInt();
+		if( 0 == act || 1 == act)
+		{
+			imu.setConfig(cmd_str_data);		// From MAIN(From AP) // DATA ON(1)/OFF(0) Only
+			#if (LOG_OUT_OFF)
+				if(0 == act)
+				{
+					LogPrintln( " lg] OutOff IMU OUT OFF m:" + cmd_str_data); 
+				}
+			#endif
+		}
+		else
+		{
+			#if (LOG_IMU_OUT_MAIN_CMD_ERR)
+				LogPrintln( " lg] Error IMU CMD Error m:" + cmd_str_data);
+			#endif
+			// Error NA :: 2,3,4 수신 at NOW(RF, MAIN)
+		}
+  	}
+  }
+
+  // (19) VRT MOT CONT
+  //	19, A	-0,1
+  //	19, ACC	-2
+  //	19, AnnnFFF -3
+  //	19, ACCnnnFFF - 4
+  //	19, App		-5
+  else if (PID_VRT_MOT_CONT == now_rcv_id)	// ( *** )  Control ID
+  {
+		if(isRodNewBoard())
+		{
+			anaVrtMotMainCmd(cmd_str_data);
+
+		  #if (LOG_VRT_MOT_MAIN_CMD)
+			LogPrintln(" LG] VrtMot m:" + cmd_str_data);
+		  #endif
+		}
+		else
+		{
+		  #if (LOG_VRT_MOT_MAIN_CMD_ERR)
+			LogPrintln(" LG] VrtMot Err: NOT_EXIST VRT MOT");
+		  #endif
+		}
+  }
+
+  // (27) BTN LED CONT
+  else if (PID_BTN_LED_CONT == now_rcv_id)	// ( *** )  Control ID
+  {
+ 		if(isRodNewBoard())
+		{
+			anaBtnLedMainCmd(cmd_str_data);
+		  #if (LOG_BTN_LED_MAIN_CMD)
+		  	LogPrintln(" LG] BtnLED m:" + cmd_str_data);
+		  #endif
+
+		}
+		else
+		{
+		  #if (LOG_BTN_LED_MAIN_CMD_ERR)
+			LogPrintln(" LG] BtnLED Err:NOT_EXIST BTN LED");
+		  #endif
+		}
+  } 
+
+  // ( ? ) NOT DEFINE PID
+  else					// ELSE : Error
+  {
+  	#if (LOG_NOW_NOT_DEF_CMD)
+  		// Error
+  		LogPrintln(" LG] NowRcv Fail NotDef Pid:" + String(now_rcv_id) + ", msg:" + (now_msg_str));
+	#endif
+  }
+  
+  now_rcv_id = PID_NOT_RECVED;
+  now_msg_str = "";
+  
+}
+
+//
+//
+//
+void anaReelDeviceControl(int act, String msg)
+{
+	//
+
+	switch(act)
+	{
+		case 0:		// ALL OFF
+			//
+			imu.setConfig("0");		// IMU Data OUT OFF
+			//
+			rodVrtControl_Stop();
+			digitalWrite(VRT_MOT_ON_PIN, VRT_MOT_OFF);		// VRT MOT OFF
+			//
+			rodBtnLedControl_Stop(0);
+			rodBtnLedControl_Stop(1);
+			digitalWrite(BTN_LED_LF_RED_PIN, BTN_LED_OFF);	// BTN LED OFF
+			digitalWrite(BTN_LED_RT_BLUE_PIN, BTN_LED_OFF);	// BTN LED OFF
+			//
+			if(BREAK_YES == getBreakType())	// OLD ROD
+			{
+				brkMotor.setValue(0);
+			}
+			#if(LOG_OUT_OFF)
+				LogPrintln(" lg] Reel Out ALL OFF");
+			#endif
+			
+			break;
+
+		default:
+			// Error
+			break;
+	}
+}
+
+//---------------------------------------------
+//
+//	19, AccNNNFFF
+//---------------------------------------------
+
+void anaVrtMotMainCmd(String msg)
+{
+	int act = msg.substring(0,(0+1)).toInt();
+	int cnt = 1;
+	int ontime = 100;
+	int offtime = 50;
+	//int time = cmd_str_data.substring(1,(1+4)).toInt();
+	switch(act)
+	{
+		case 0:
+			digitalWrite(VRT_MOT_ON_PIN, VRT_MOT_OFF);		// VRT MOT OFF
+			rodVrtControl_Stop();
+			#if (LOG_OUT_OFF)
+				LogPrintln( " lg] OutOff VrtMOT OFF m:" + msg); 
+			#endif
+			break;
+	
+		case 1:
+			digitalWrite(VRT_MOT_ON_PIN, VRT_MOT_ON);		// VRT MOT ON
+			rodVrtControl_Stop();
+			// T/O Control TBD
+			break;
+#if 0
+		case 2: // cnt
+			cnt = msg.substring(4,(4+1)).toInt();
+			if(0 == cnt) { cnt = 1; }
+			vrt_ap_req_cnt = _time;
+			rodReelVrtControl_Start(vrt_ap_req_cnt, vrt_ap_req_on_time, vrt_ap_req_off_time);	// AP REQ, 게임동작별 PreSET으로 다르게 설정
+			break;
+	
+		case 3: // time
+			ontime = msg.substring(4,(4+4)).toInt();
+			if(50 > _time || 9999 <_time)	{ _time = 100; }
+			vrt_ap_req_on_time = _time;
+			
+			_time = msg.substring(8).toInt();
+			if(30 > _time || 999 <_time)	{ _time = 50; }
+			vrt_ap_req_off_time = _time;
+			break;
+#endif
+		case 4: // c+ time // ID,ACCNNNFFF%
+
+			digitalWrite(VRT_MOT_ON_PIN, VRT_MOT_OFF);		// VRT MOT OFF
+			rodVrtControl_Stop();
+
+			cnt = msg.substring(1,(1+2)).toInt();
+			if(!cnt) { cnt = 1;}
+			vrt_ap_req_cnt = cnt;
+			ontime = msg.substring(3,(3+3)).toInt();
+			if(20 > ontime || 999 < ontime) { ontime = 100; }
+			vrt_ap_req_on_time = ontime;
+			offtime = msg.substring(6,(6+3)).toInt();
+			if(20 > offtime || 999 < offtime) { offtime = 50; }
+			vrt_ap_req_off_time = offtime;
+			//
+			rodVrtControl_Start(vrt_ap_req_cnt, vrt_ap_req_on_time, vrt_ap_req_off_time);	// AP REQ, 게임동작별 PreSET으로 다르게 설정
+			//
+			break;
+			
+		case 5: // Pattern, TBD
+			digitalWrite(VRT_MOT_ON_PIN, VRT_MOT_OFF);		// VRT MOT OFF
+			rodVrtControl_Stop();
+
+		// TBC CONTROL
+		
+			break;
+	
+		default:
+			// Error NA :: 2,3,4 수신 at NOW(RF, MAIN)
+			break;
+	}
+
+}
+
+
+#define BTN_LED_ALL_POSI	0
+#define BTN_LED_LEFT_POSI	1
+#define BTN_LED_RIGHT_POSI	2
+#define BTN_LED_LAST_POSI	BTN_LED_RIGHT_POSI	// 주의, 마지막 POSI
+
+// 27, xAccNNNFFF
+void anaBtnLedMainCmd(String msg)
+{
+	int idx;
+
+	int act = msg.substring(1,2).toInt();
+	if(5 < act)
+	{
+		return;
+	}	// 처리 중지
+	
+	int posi = msg.substring(0,1).toInt();
+	// Position이 맞지 않으면 실행하지 않음
+	if( BTN_LED_ALL_POSI == posi && (0==act || 1==act) )
+	{
+		// ACTION
+	}
+	else if(BTN_LED_LAST_POSI < posi)	// MAX이상이면 처리안함.
+	{
+		return;
+	}	// 처리 중지
+
+	idx = (posi-1);		// idx : 0-Left, 1-Right
+
+	int pin;
+	int cnt;
+	unsigned int ontime;
+	unsigned int offtime;	
+	//int time = cmd_str_data.substring(1,(1+4)).toInt();
+	switch(act)
+	{
+		case 0:	//OFF
+			if(BTN_LED_ALL_POSI == posi)	// ALL
+			{
+				digitalWrite(BTN_LED_LF_RED_PIN, BTN_LED_OFF);		// BTN LED OFF
+				digitalWrite(BTN_LED_RT_BLUE_PIN, BTN_LED_OFF);		// BTN LED OFF
+				rodBtnLedControl_Stop(0);
+				rodBtnLedControl_Stop(1);
+				#if (LOG_OUT_OFF)
+					LogPrintln( " lg] OutOff BtnLED ALL OFF m:" + msg); 
+				#endif
+			}
+			else
+			{
+				if(idx) pin = BTN_LED_RT_BLUE_PIN;
+				else	pin = BTN_LED_LF_RED_PIN;
+				digitalWrite(pin, BTN_LED_OFF); 	// BTN LED OFF
+				rodBtnLedControl_Stop(idx);
+				#if (LOG_OUT_OFF)
+					LogPrintln( " lg] OutOff BtnLED OFF posi:" + String(posi) + ",m:" + msg); 
+				#endif
+			}
+			
+			
+			break;
+	
+		case 1:	// ON
+			if(BTN_LED_ALL_POSI == posi)	// ALL
+			{
+				digitalWrite(BTN_LED_LF_RED_PIN, BTN_LED_ON);		// BTN LED ON
+				digitalWrite(BTN_LED_RT_BLUE_PIN, BTN_LED_ON);		// BTN LED ON
+				rodBtnLedControl_Stop(0);
+				rodBtnLedControl_Stop(1);
+			}
+			else
+			{
+				if(idx) pin = BTN_LED_RT_BLUE_PIN;
+				else	pin = BTN_LED_LF_RED_PIN;
+				digitalWrite(pin, BTN_LED_ON);		// BTN LED ON
+				rodBtnLedControl_Stop(idx);
+			}
+			break;
+			
+		case 2:	//cnt
+			break;
+			
+		case 3:	// time
+			break;
+
+		case 4: // c+ time // ID,ACCNNNFFF%
+
+			if(idx) pin = BTN_LED_RT_BLUE_PIN;
+			else	pin = BTN_LED_LF_RED_PIN;
+			digitalWrite(pin, BTN_LED_OFF);		//  BTN LED OFF
+			rodBtnLedControl_Stop(idx);
+
+			cnt = msg.substring(2,(2+2)).toInt();
+			if(!cnt) { cnt = 1;}
+			btn_led_ap_req_cnt[idx] = cnt;
+			ontime = msg.substring(4,(4+3)).toInt();
+			if(20 > ontime || 999 < ontime) { ontime = 50; }
+			btn_led_ap_req_on_time[idx] = ontime;
+			offtime = msg.substring(7,(7+3)).toInt();
+			if(20 > offtime || 999 < offtime) { offtime = 50; }
+			btn_led_ap_req_off_time[idx] = offtime;
+			//
+			rodBtnLedControl_Start(idx, cnt, ontime, offtime);	// AP REQ, 게임동작별 PreSET으로 다르게 설정
+			//
+			break;
+			
+		case 5: // Pattern, TBD
+			if(idx) pin = BTN_LED_RT_BLUE_PIN;
+			else	pin = BTN_LED_LF_RED_PIN;
+			digitalWrite(pin, BTN_LED_OFF);		// BTN LED OFF
+			rodBtnLedControl_Stop(idx);
+
+			// TBD Pattern Control
+			
+		default:
+			// Error NA :: 2,3,4 수신 at NOW(RF, MAIN)
+			break;
+	}
+	
+	//logMsg = "Posi/Act:" + cmd_str_data;
+
+}
+
+
+//-----------------------------------------
+//	VRT MOT Control
+// FW CONTROL VAR
+//-----------------------------------------
+int vrt_cont_cnt = 0;
+unsigned int vrt_cont_on_time = 100;
+unsigned int vrt_cont_off_time = 50;
+//STEP
+unsigned int vrt_cont_step = 0;
+
+#define VRT_MOT_CONT_START	10
+#define VRT_MOT_CONT_STOP	0
+
+// Control VAR & SAVE VAR분리
+
+void rodVrtControl_Start(int cnt, unsigned int ontime, unsigned int offtime)
+{
+	vrt_cont_cnt = cnt;
+	vrt_cont_on_time = ontime;
+	vrt_cont_off_time = offtime;
+	vrt_cont_step = VRT_MOT_CONT_START;
+	
+	vrt_cont_flag = 1;
+}
+
+void rodVrtControl_Stop()
+{
+	vrt_cont_step = VRT_MOT_CONT_STOP;
+	vrt_cont_flag = 0;
+}
+
+//
+//
+//	CALL 10ms
+void rodVrtControl()
+{
+	static unsigned int oldStep = 0;
+	static unsigned long _to = 0;
+	static unsigned long _cnt = 0;
+
+	switch(vrt_cont_step)
+	{
+		case 0:
+			break;
+			
+		case VRT_MOT_CONT_START:	//Start
+			_cnt = 0;
+			vrt_cont_step = 20;
+			break;
+
+		case 20:		// REPWAT & ON
+			_cnt++;
+			if(_cnt > vrt_cont_cnt)	// to END
+			{
+				vrt_cont_step = 90;
+			}
+			else
+			{
+				digitalWrite(VRT_MOT_ON_PIN, VRT_MOT_ON);		// VRT MOT ON
+				setTO(_to);
+				vrt_cont_step = 21;
+				break;
+			}
+		case 21:		// OFF
+			if(checkTO(_to, vrt_cont_on_time))
+			{
+				digitalWrite(VRT_MOT_ON_PIN, VRT_MOT_OFF);		// VRT MOT OFF
+				setTO(_to);
+				vrt_cont_step = 22;
+			}
+			break;
+		case 22:		// OFF Wait to REPEAT
+			if(checkTO(_to, vrt_cont_off_time))
+			{
+				vrt_cont_step = 20;		// REPEAT
+			}
+			break;
+
+		case 90:
+			oldStep = 0;
+			_to = 0;
+			_cnt = 0;
+			rodVrtControl_Stop();
+			break;
+			
+		default:
+			break;
+	}
+}
+
+
+//-----------------------------------------------------------------------------
+//
+//-----------------------------------------------------------------------------
+unsigned int btn_led_cnt[BTN_LED_MAX_SIZE] = {0,0};
+unsigned int btn_led_on_time[BTN_LED_MAX_SIZE] = {100,100};
+unsigned int btn_led_off_time[BTN_LED_MAX_SIZE] = {50,50};
+// step
+unsigned int btn_led_step[BTN_LED_MAX_SIZE] = {0,0};
+
+#define BTN_LED_CONT_START	10
+#define BTN_LED_CONT_STOP	0
+
+
+void rodBtnLedControl_Start(int idx, unsigned int cnt, unsigned int ontime, unsigned int offtime)
+{
+	btn_led_cnt[idx] = cnt;
+	btn_led_on_time[idx] = ontime;
+	btn_led_off_time[idx] = offtime;
+	btn_led_step[idx] = BTN_LED_CONT_START;
+	
+	btn_led_flag[idx] = 1;
+
+	//LogPrintln(" lg] BtnLed START idx:" + String(idx));
+}
+
+void rodBtnLedControl_Stop(int idx)
+{
+	btn_led_step[idx] = BTN_LED_CONT_STOP;
+	btn_led_flag[idx] = 0;
+	//LogPrintln(" lg] BtnLed STOP idx:" + String(idx));
+}
+
+#define BTN_LED_LEFT_IDX	0
+#define BTN_LED_RIGHT_IDX	1
+
+//-------------------------------------------------
+//
+//	CALL 10ms
+//-------------------------------------------------
+void rodLfBtnLedControl()
+{
+	static unsigned int oldStep = 0;
+	static unsigned long _to = 0;
+	static unsigned long _cnt = 0;
+	String sendMsg;
+
+	int idx = BTN_LED_LEFT_IDX;	// LEFT
+	
+	// 0 - LEFT LED, 1- RIGHT LED
+	switch(btn_led_step[idx])
+	{
+		case 0:
+			break;
+			
+		case BTN_LED_CONT_START:	//Start
+			_cnt = 0;
+			btn_led_step[idx] = 20;
+			break;
+
+		case 20:		// EPEAT & ON
+			_cnt++;
+			if(_cnt > btn_led_cnt[idx])	// to END
+			{
+				btn_led_step[idx] = 90;
+			}
+			else
+			{
+				// ON
+				digitalWrite(BTN_LED_LF_RED_PIN, BTN_LED_ON); 	// BTN LED OFF
+				setTO(_to);
+				btn_led_step[idx] = 21;
+				break;
+			}
+		case 21:		// OFF
+			if(checkTO(_to, btn_led_on_time[idx]))
+			{
+				// OFF
+				digitalWrite(BTN_LED_LF_RED_PIN, BTN_LED_OFF); 	// BTN LED OFF
+				setTO(_to);
+				btn_led_step[idx] = 22;
+			}
+			break;
+		case 22:		// OFF Wait to REPEAT
+			if(checkTO(_to, btn_led_off_time[idx]))
+			{
+				btn_led_step[idx] = 20;		// REPEAT
+			}
+			break;
+
+		case 90:
+			oldStep = 0;
+			_to = 0;
+			_cnt = 0;
+			rodBtnLedControl_Stop(idx);
+			break;
+			
+		default:
+			break;
+	}
+}
+
+void rodRtBtnLedControl()
+{
+	static unsigned int oldStep = 0;
+	static unsigned long _to = 0;
+	static unsigned long _cnt = 0;
+	String sendMsg;
+
+	int idx = BTN_LED_RIGHT_IDX;	// RIGHT
+	
+	// 0 - LEFT LED, 1- RIGHT LED
+	switch(btn_led_step[idx])
+	{
+		case 0:
+			break;
+			
+		case BTN_LED_CONT_START:	//Start
+			_cnt = 0;
+			btn_led_step[idx] = 20;
+			break;
+
+		case 20:		// EPEAT & ON
+			_cnt++;
+			if(_cnt > btn_led_cnt[idx])	// to END
+			{
+				btn_led_step[idx] = 90;
+			}
+			else
+			{
+				// ON
+				digitalWrite(BTN_LED_RT_BLUE_PIN, BTN_LED_ON); 	// BTN LED ON
+				setTO(_to);
+				btn_led_step[idx] = 21;
+				break;
+			}
+		case 21:		// OFF
+			if(checkTO(_to, btn_led_on_time[idx]))
+			{
+				// OFF
+				digitalWrite(BTN_LED_RT_BLUE_PIN, BTN_LED_OFF); 	// BTN LED OFF
+				setTO(_to);
+				btn_led_step[idx] = 22;
+			}
+			break;
+		case 22:		// OFF Wait to REPEAT
+			if(checkTO(_to, btn_led_off_time[idx]))
+			{
+				btn_led_step[idx] = 20;		// REPEAT
+			}
+			break;
+
+		case 90:
+			oldStep = 0;
+			_to = 0;
+			_cnt = 0;
+			rodBtnLedControl_Stop(idx);
+			break;
+			
+		default:
+			break;
+	}
+}
+
+
+
+//=================================================================
+//		NORMAL Mode
+//	- DEBUG용 CMD입력
+//
+//=================================================================
+void uartPcHandler_NormalMode()
+{
+#if 0	// TEST, NOT EFFECTIVE
+  if (!Serial) {			// usb not Connect ?
+    return;
+  }
+#endif
+
+  if (Serial.available())	// if Recv Recv Length
+  {
+    String msg = Serial.readStringUntil('%');	// Wait ETX Char(%)
+    msg.trim();									// Delete [ Space Char ]
+    if (msg == "")
+    {
+      return;
+    }
+
+  //== Recv Cmd Ana & Exec
+	if(0) {}	// dummy
+
+	// 
+	else if (msg.startsWith(STX_IMU_SETUP) )
+	{
+		//msg = msg.substring(3);	// from PC Normal
+		String setMsg = imu.convert_oldSetup(msg);
+		imu.setConfig(setMsg);		// From PC _NORMAL
+	}
+	
+	// ($11)-Get Address
+    else if (msg.startsWith(STX_GET_ADDR) || msg.startsWith(STX_SETUP_ENTRY) )
+	{
+		// [Get Address ] 1st Button Click
+		String str = STX_GET_ADDR + "S" + eNow.getMyAddress() + "," + eNow.getTargetAddress() + "%";
+		RespPrintln(str);
+
+		// ENTRY SETUP MODE
+		imu.setStartStop(IMU_CONF_STOP);
+		flagIMUSTOP = 1;
+
+		Entry_SetupMode();		// 위치 이동하지 말것, 마지막 처리
+    }
+	
+	// ($9002) SETUP EXIT, NA - Normal Mode
+	else if (msg.startsWith(STX_SETUP_EXIT) )
+  	{
+  		// NA - Normal Exit No Effetive
+	}
+	
+  	else if (msg.startsWith(STX_IMU_INTVAL_CHK))
+	{
+	  imuIntervalCheckCnt = 1;
+    }
+	else if (msg.startsWith(STX_VERSION_READ))// 2. VER at NORMAL
+	{
+	 	if(IMU_CONN == imuStatus)
+		{
+			msg = imu.getversion();
+	  	}
+	  	else
+	  	{
+			msg = rodVer + ",Vi99.99.99";
+	  	}
+		
+		LogPrintln(" LG] Ver__ " + rodVer + "," + msg + "%");
+	}
+	
+	else if (msg.startsWith(STX_DEV_INFO_REQ))	// 
+	{
+		int reqKind = msg.substring(3,(3+2)).toInt();
+		switch(reqKind)
+		{
+			case 0:		// IF_VER
+				break;
+			case 1:		// BOARD TYPE
+				LogPrintln(" LG] INFO__ Board Type: " + String(rodBoardType));
+				break;
+			default:
+				break;
+		}
+	}
+
+	// ($F0) - FILE CONTROL 
+  	else if (msg.startsWith(STX_SET_FILE))
+	{
+		//fileControl_test(msg);
+		eNow.fsFormat();
+  	}
+	
+
+	//($F6) - POWER AGEING TEST PROGRAM
+  	else if (msg.startsWith(STX_SET_DATA))
+	{
+	  msg = msg.substring(3, msg.length());
+	  setData_RodCycleTest(msg);
+	  //LogPrintln(" LG] IMUSET" + msg);
+    }
+	
+	//=== NOT DEFINE CMD
+	else
+	{
+		LogPrintln(" lg] ERROR_ NOT DEFINE CMD");		
+	}
+	
+  }
+}
+
+//-------------------------------------------------
+//	타겟주소 FS에 저장
+//	WRITE_OK 1000
+//	WRITE_FAIL 1001
+//	LENGTH_ERR  0~16
+//-------------------------------------------------
+int targetAddrWrite(String msg)
+{
+	int rts = 1000;	// OK
+	
+	  int len = msg.length();
+	  //if(16 < len)
+      if((MAC_ADDR_OK_STR_LEN - 1) < len)
+	  //if((MAC_ADDR_OK_LEN) != len)
+	  {
+		  // TBD  at FAIL ( SET NG )
+      	if(false == eNow.setTargetAddress(msg))
+      	{
+      		rts = 1001;	//Write Error
+      		LogPrintln(" LG] Error_ T_ADDR Write NG");
+      	}
+		else
+		{
+			LogPrintln(" LG] T_ADDR Set Ok Len:" + String(len) + ",m:" + msg);
+		}
+	  }
+	  else
+	  {
+	  	rts = len;		// ㅣLength Error : 0 ~ 16
+	  	#if (LOG_ADDR_NG)
+	  	LogPrintln(" LG] T_ADDR Set Address NG, LESS 17 ");
+		#endif
+	  }
+
+	  return rts;
+}
+
+/*  =====================================
+        (Uart) Recv Data Hanlder, from PC, Only SetUp Mode
+  ===================================== */
+void uartPcHandler_Setup()
+{
+#if 0	// TEST, NOT EFFECTIVE
+  if (!Serial) {			// usb not Connect ?
+    return;
+  }
+#endif
+
+  if (Serial.available())	// if Recv Recv Length
+  {
+    String msg = Serial.readStringUntil('%');	// Wait ETX Char(%)
+    msg.trim();									// Delete [ Space Char ]
+    if (msg == "")
+    {
+      return;
+    }
+
+	String respMsg;
+	
+//=== Recv CMD ANA & EXEC
+	if(0) {}	// dummy
+	
+	// ADD SEUP EXIT by Command PC
+	else if (msg.startsWith(STX_SETUP_EXIT))
+	{
+		Exit_SetupMode();
+	}
+
+	// ($11)-Get Address
+    else if (msg.startsWith(STX_GET_ADDR))
+	{
+      respMsg = STX_GET_ADDR + "S" + eNow.getMyAddress() + "," + eNow.getTargetAddress() + "%";
+      RespPrintln(respMsg);
+    }
+	
+	//($12)-Set Address
+    else if (msg.startsWith(STX_SET_ADDR))
+	{
+		msg = msg.substring(3);		// Address Only(17개 문자)
+		//targetAddrWrite(msg);
+  		int ret = targetAddrWrite(msg);
+	  	if((1000 != ret) && (!isSetupMode) )	// NG & NORMAL = LOG출력, SETUP = LOG X
+	  	{
+			String logMsg = "";
+	  		if(1001 == ret)	logMsg = "Write Fail";
+			else			logMsg = "Len Error";
+			LogPrintln(" LG] Error_ TART ADDR " + logMsg +",m"+ msg + ",len:" + String(msg.length()));
+	  	}
+
+
+    }
+	//($08Axxxx)-IMU Setting
+    else if (msg.startsWith(STX_IMU_SETUP))
+	{
+		//msg = msg.substring(3);
+		respMsg = imu.convert_oldSetup(msg);
+      	imu.setConfig(respMsg);	// from PC SETUP Progam
+    }
+
+  	//($91)-Set IMU config With RECV STRING
+  	else if (msg.startsWith(STX_IMU_SETSTRING))
+	{
+	  respMsg = msg.substring(3, msg.length());
+	  //LogPrintln(msg);
+	  imu.setConfigString(respMsg);
+    }
+
+  	else if (msg.startsWith(STX_IMU_INTVAL_CHK))
+	{
+	  imuIntervalCheckCnt = 1;
+    }
+#if 0	
+	else if (msg.startsWith(STX_VERSION_READ))// 2. VER at SETUP
+	{
+	 	if(IMU_CONN == imuStatus)
+		{
+			msg = imu.getversion();
+	  	}
+	  	else
+	  	{
+			msg = rodVer + ",Vi99.99.99";
+	  	}
+		LogPrintln(" LG] Ver___ " + msg + "%");
+	}
+#endif
+	// NOT DEFINE CMD
+	else
+	{
+		// Error
+	}
+	
+  }
+}
+
+#if 0
+//
+//
+//	NOT_USE
+void uartHandlerNormal()
+{
+  if (!Serial) {			// usb not Connect ?
+    return;
+  }
+
+  if (Serial.available())	// if Recv Recv Length
+  {
+    String msg = Serial.readStringUntil('%');	// Wait ETX Char(%)
+    msg.trim();									// Delete [ Space Char ]
+    if (msg == "")
+    {
+      return;
+    }
+
+	if(0) {}	// dummy
+	
+	// ($11)-Get Address
+    else if (msg.startsWith(STX_GET_ADDR))
+	{
+      String str = STX_GET_ADDR + "S" + eNow.getMyAddress() + "," + eNow.getTargetAddress() + "%";
+      RespPrintln(str);
+    }
+	//($12)-Set Address
+    else if (msg.startsWith(STX_SET_ADDR))
+	{
+      msg = msg.substring(3, msg.length());
+      eNow.setTargetAddress(msg);
+    }
+#if 0
+	//($08)-IMU Setting
+    //else if (msg.startsWith(STX_IMU_SETUP)) {
+    //  imu.setConfig(msg);
+    //}
+#endif
+
+  	//($13)-Set IMU config With RECV STRING
+  	else if (msg.startsWith(STX_IMU_SETSTRING))
+	{
+	  msg = msg.substring(3, msg.length());
+	  imu.setConfigString(msg);
+	  //LogPrintln(" LG] IMUSET" + msg);
+    }
+
+  	else if (msg.startsWith(STX_SET_DATA))
+	{
+	  msg = msg.substring(3, msg.length());
+	  setData_RodCycleTest(msg);
+	  //LogPrintln(" LG] IMUSET" + msg);
+    }
+	
+  }
+}
+
+#endif
+
+
+int pwrOn_1st_imuRecv =0;
+int imuIntervalTime = 0;
+/*-------------------------------------------------------------------
+	Set Flag IMU Data Recved, for IMU Connetion
+--------------------------------------------------------------------*/
+void setRecvImuData()
+{
+	//-- 1)  IMU RCV FLAG SET
+	fRecvImuData = 1;		// SET Flag IMU Data RECVED
+	#if (LOG_PWRON_TIME)
+		if(!pwrOn_1st_imuRecv)
+		{
+			pwrOn_1st_imuRecv = 1;
+			LogPrintln(" LG] IMURCV 1st IMU Data(6item) Recved");
+		}
+		//LogPrintln(" LG] IMU Data RECVED");
+	#endif
+
+	//-- 2) IMU Interval측정,  IMU Interval LOG OUT, CMD=$92
+	// 3번 측정하여 평균 시간을 응답
+  	if(imuIntervalCheckCnt)
+  	{
+  		imuIntervalCheckCnt++;
+		if(0) {}
+  		else if(2 == imuIntervalCheckCnt) { measureCnt = curr_ms_tick;	}// 1st
+  		else if(3 == imuIntervalCheckCnt) { imuIntervalTime += (int)(curr_ms_tick - measureCnt); measureCnt = curr_ms_tick;	}// 2nd
+  		else if(4 == imuIntervalCheckCnt) { imuIntervalTime += (int)(curr_ms_tick - measureCnt); measureCnt = curr_ms_tick;	}// 3rd
+		else						// 2nd
+		{
+			imuIntervalTime += (int)(curr_ms_tick - measureCnt);		// 4th
+			imuIntervalTime = imuIntervalTime/3;
+			String strImuIntv = zeroFill4Char((unsigned int)imuIntervalTime);
+			// Send to PC
+			//if(AP_IS_TM == apType)
+			//{
+			//	eNow.write(STR_PID_ROD_INFO_RESP, (IMU_INTERVAL_TIME + strImuIntv));
+			//}
+			RespPrintln(STX_IMU_INTVAL_CHK + strImuIntv +"%");	// ms
+			
+			imuIntervalCheckCnt = 0;
+			imuIntervalTime = 0;
+			measureCnt = 0;
+		}
+  	}
+}
+
+//---------------------------------------------------------
+//
+int isRodNewBoard()
+{
+	return (rodBoardType);		// 0-OLD ROD, 1-NEW ROD
+}
+
+//---------------------------------------------------------
+//	PowerOn후 제일먼저 실행할 것.
+//	- PinMode설정전에 실행할 것.
+//---------------------------------------------------------
+//	구보드(V1) -NC : Open(HIGH)
+//	신보드(V2) - GND : LOW
+//---------------------------------------------------------
+int setBoardType()
+{
+
+// NOT-USE, FIXED to NEW BOARD(V2)
+#if (ROD_BDTYPE_DETECT)		
+	int rts;
+
+	int i =0;
+	unsigned int readData = 0x00;
+	for(i=0; i<5; i++)
+	{
+		readData += ((unsigned int)digitalRead(BOARD_TYPE_PIN) ) << i;
+		delay(10);		// 10 ms마다 읽기
+	}	
+	//if(0x1F == readData)	rodBoardType = OLD_BOARD_1;	// 연속 50ms(10ms * 5번) HIGH
+	//else					rodBoardType = NEW_BOARD_2;
+	if(0x1F == readData)	rts = OLD_BOARD_1; // 연속 50ms(10ms * 5번) HIGH
+	else					rts = NEW_BOARD_2;
+
+	#if (LOG_BOARD_TYPE)
+		LogPrintln(" LG] INFO__ BoardType Data : " + String(readData) + " ,Type: " + (rodBoardType? "NEW, ":"OLD, ") + String(rodBoardType));
+	#endif
+
+	return rts;
+#endif
+}
+
+
+// Button Type
+int getButtonType()
+{
+	return (buttonType);
+}
+
+// Reel ENCODERType
+int getBreakType()
+{
+	return (breakType);
+}
+
+// Reel ENCODERType
+int getEncType()
+{
+	return (reelEncType);
+}
+
+
+// BATT Type
+int getBattType()
+{
+	return (battType);
+}
+
+//----------------------------------------------------------------
+//
+//
+//----------------------------------------------------------------
+void settingIOtype()
+{
+	// BOARD V1 : OLD
+	if(OLD_BOARD_1 == rodBoardType)		// OLD
+	{
+		buttonType = BUTTON_V1;
+		breakType = BREAK_YES;
+		reelEncType = REEL_ENC_V1;
+		battType = BATT_3350_V1;
+	}
+	// BOARD V2 : NEW
+	else
+	{
+		buttonType = BUTTON_V2;
+		breakType = BREAK_NO;
+#ifdef	REEL_ENC_V3
+		reelEncType = REEL_ENC_V3;		// (Vr1.0.1.0)
+#else
+		reelEncType = REEL_ENC_V2;
+#endif
+		battType = BATT_800_V2;
+	}
+	// TBD Must(?)
+	#if (LOG_IO_TYPE)
+		LogPrintln(" LG] IoType BTN: " + String(buttonType) + ", BRK:" + String(breakType) + ", ENC:" + String(reelEncType) + ", BATT:" + String(battType));
+	#endif
+}
+
+//----------------------------------------------------------------
+//
+void setSlaveMode()
+{
+	int i =0;
+	unsigned int readData = 0x00;
+	for(i=0; i<5; i++)
+	{
+		readData += ((unsigned int)digitalRead(SETUP_MODE_PIN) ) << i;
+		delay(10);
+	}	
+	if(0x1F == readData)	rodMode = SETUP_MODE;
+	else					rodMode = NORMAL_MODE;
+}
+
+int readSlaveMode()
+{
+	return rodMode;
+}
+int isSlaveSetupMode()
+{
+	return rodMode;
+}
+
+// SET PC CMD SET
+void Entry_SetupMode()
+{
+	rodMode = SETUP_MODE;
+	//digitalWrite(LED3_R_PIN, HIGH);
+	//digitalWrite(LED2_G_PIN, LOW);
+	led1Grn_OutSts = LOW;
+	digitalWrite(LED1_GRN_PIN, led1Grn_OutSts);
+	led2Red_OutSts = HIGH;
+	digitalWrite(LED2_RED_PIN, led2Red_OutSts);
+}
+void Exit_SetupMode()
+{
+	//rodMode = NORMAL_MODE;
+	//digitalWrite(LED3_R_PIN, LOW);
+	//digitalWrite(LED2_RED_PIN, LOW);
+
+	// Setup -> Reset(=Normal) 
+	//ESP.restart();
+	ESP_Soft_Reset();
+}
+
+void ESP_Soft_Reset()
+{
+	// Setup -> Reset(=Normal) 
+	ESP.restart();
+	//esp_restart();
+}
+
+//-------------------------------------------------------
+//	1. Change Check ( -2 ~ +2 )
+//	2. Send to MAIN
+//
+//	CALL, 1 SEC =>, 100ms =>  1 SEC
+//-------------------------------------------------------
+void battChangeCheckSend()
+{
+#if 0				// V1.0.1.0
+	// 1) Range : + 2 / -2 Change
+	if ( (battery.rest_lvl < (battery.old_restLvl-1)) || (battery.rest_lvl > (battery.old_restLvl+1)) )
+ 	{
+		String str = battery.getLevel3Char(battery.rest_lvl);	// rest_lvl : 01~99
+		battery.restLvlStr = str;
+
+		eNow.write(STR_PID_BATT_LVL, battery.restLvlStr);	// Send to MAIN, Baterry Levle : 3 char 001~009%
+
+	#if LOG_BAT
+	  #if BAT_AD_AVG_INTEG	// INTEG
+		LogPrintln(" LG] BATLVL " + str + ", Sum_ad: " + String(battery.sum_ad) + ", AVG_ad: " + String(battery.avg_ad) + ", AD_Integ: " + String(battery.integ_ad) );
+	  #else					// AVG
+		LogPrintln(" LG] BATLVL " + str + ", Sum_ad: " + String(battery.sum_ad) + ", AVG_ad: " + String(battery.avg_ad) );
+	  #endif
+	#endif
+
+		battery.old_restLvl = battery.rest_lvl;
+	}
+	else
+	{
+		// NA
+		// str = battery.getLevel3Char(battery.old_restLvl);
+	}
+#else
+	// 1) Range : + 2 / -2 Change
+	int	bat_gap = abs(battery.rest_lvl - battery.old_restLvl);
+	int	bat_dir = bat_gap ? (battery.rest_lvl - battery.old_restLvl) / bat_gap : 0;
+	int bat_chk = checkTO(battery.last_tick, BAT_UPDATE_INTVL) || (battery.chk_cnt && (bat_gap > BAT_UPDATE_GAP*4));
+//	if ((bat_chk && ((bat_gap >= BAT_UPDATE_GAP) || (bat_gap && (battery.rest_lvl==BATTERY_PER_MAX)))) || 
+//		(bat_dir && (bat_dir != battery.old_dir)))
+	if (bat_chk && ((bat_gap >= BAT_UPDATE_GAP) || (bat_gap && (battery.rest_lvl==BATTERY_PER_MAX))))
+ 	{
+		int	notify_Level;
+		if ((battery.old_restLvl < 0) || (bat_gap < BAT_UPDATE_GAP)) {
+			notify_Level = battery.rest_lvl;
+		}
+		else {
+			notify_Level = battery.old_restLvl + BAT_UPDATE_GAP * bat_dir;
+		}
+		String str = battery.getLevel3Char(notify_Level);	// rest_lvl : 01~99
+		battery.restLvlStr = str;
+
+		eNow.write(STR_PID_BATT_LVL, battery.restLvlStr);	// Send to MAIN, Baterry Levle : 3 char 001~009%
+		battery.old_restLvl = notify_Level;
+		if (bat_dir && (battery.old_dir != bat_dir)) {
+			battery.old_dir = bat_dir;
+//			battery.chk_cnt = 1;
+			str[0] = (bat_dir > 0) ? '+' : '-';
+		}
+		else if (battery.chk_cnt > 0)
+			battery.chk_cnt--;
+		setTO(battery.last_tick);
+
+#ifdef	DbgSerial
+	#if LOG_BAT
+		DbgPrintln(" LG] BATLVL " + str + ":" + String(battery.old_restLvl)  + ", Sum_ad: " + String(battery.sum_ad) + ", AVG_ad: " + String(battery.avg_ad)  + ", LST_ad: " + String(battery.adc_value) );
+	#endif
+#else
+	#if LOG_BAT
+	  #if BAT_AD_AVG_INTEG	// INTEG
+		LogPrintln(" LG] BATLVL " + str + ", Sum_ad: " + String(battery.sum_ad) + ", AVG_ad: " + String(battery.avg_ad) + ", AD_Integ: " + String(battery.integ_ad) );
+	  #else					// AVG
+		LogPrintln(" LG] BATLVL " + str + ", Sum_ad: " + String(battery.sum_ad) + ", AVG_ad: " + String(battery.avg_ad)  + ", LST_ad: " + String(battery.adc_value) );
+	  #endif
+	#endif
+#endif
+	}
+	else
+	{
+		// NA
+		// str = battery.getLevel3Char(battery.old_restLvl);
+#ifdef	DbgSerial
+	#if LOG_BAT
+			String str = battery.getLevel3Char(battery.rest_lvl);	// rest_lvl : 01~99
+			DbgPrintln(" LG]CBATLVL " + str + ":" + String(battery.old_restLvl)  + ", Sum_ad: " + String(battery.sum_ad) + ", AVG_ad: " + String(battery.avg_ad)  + ", LST_ad: " + String(battery.adc_value) );
+	#endif
+#endif
+	}
+#endif	
+}
+
+
+//----------------------------------------------------------------
+//
+//	CALL 1SEC
+void rodAliveRecvTOCheck()
+{
+	// CLEAR at Main Alive Recved
+	// Main에서 ROD_ALIVE(10)을 수신하면 CNT를 CLR함
+	// MAIN에서 연속 10초간 안오는 경우, 낚시대 LED 점멸 정지 
+    if (RUN_TIMEOUT_ALIVE_CNT < rod_Alive_recv_over_cnt)		// Over 10 SEC ( 10 * 1sec)
+	{
+		// COUNT CLR : Recved From MAIN [ALive Check] 1 SEC
+		rodAliveRcv_LedBlinkFlag = 0;		// GREEN LED BLINK 1 sec
+		mainStatus = MAIN_STS_DISCONN;
+    }
+	else
+	{
+		// 2 - rin time Check
+  		rod_Alive_recv_over_cnt++;
+		#if (LOG_ALIVE_CHK_CNT)
+			LogPrintln(" LG] AlvChk Cnt:" +String(rod_Alive_recv_over_cnt));
+			//LogPrintlnus(" LG] AlvChk Cnt:" +String(rod_Alive_recv_over_cnt));
+		#endif
+	}
+}
+
+//----------------------------------------------------------------
+//
+//
+//	CALL 1SEC
+void sleepEnteranceCheck()
+{
+#if 1 // NOT USE = DELETE SLEEP
+		//1 ) Slave Sleep Time Check
+	if (RUN_TIMEOUT_SLEEP_CNT < run_time_sleep_over_cnt )	// Over 7 Sec ?
+	{
+	  /*
+		eNow.write(STR_PID_SLAVE_SLEEP_ENT, RESP_STX_SLEEP_ENT);		// Send to MAIN , Slave Sleep EnNTERANCE
+		//if (isRodNewBoard())
+    	if(BREAK_NO == getBreakType())	// NEW ROD
+		{
+			// N.A
+		}
+		else
+		{
+			brkMotor.setValue(0);
+			digitalWrite(DC24VON_PIN, LOW);			// 24V_DC OFF
+		}
+		delay(100);
+		esp_deep_sleep_start();
+	  */
+	}
+#endif
+
+}
+
+/*---------------------------------------------------------
+//
+	Call 1sec
+-----------------------------------------------------------*/
+void imuConnectCheck()
+{
+#if 1
+	String respMsg;
+
+	//respMsg = RESP_STX_IMU_CONN_OK;
+	//respMsg = RESP_STX_IMU_CONN_OK;
+	if(fRecvImuData)		// IMU Data RECVED?
+	{
+		fRecvImuData = 0;		// CLEAR FLAG of IMU RECV DATA
+		imuPollingTOcnt = 0;			// Counter CLR
+		//respMsg = RESP_STX_IMU_CONN_OK;
+		respMsg = "11";
+		imuStatus = IMU_CONN;
+	}
+	else			// NOT RECV?
+	{
+		imuPollingTOcnt++;
+		if( IMU_CONN_TIMEOUT_CNT < imuPollingTOcnt) // Over ( 6 sec )?
+		{
+			imuPollingTOcnt = IMU_CONN_TIMEOUT_CNT+1;
+			//respMsg = RESP_STX_IMU_CONN_NG;
+			respMsg = "00";
+			imuStatus = IMU_DISCONN;
+		}
+	}
+	
+	// Send Msg IMU CONN, Only Change
+	if(oldimuStatus != imuStatus)
+	{
+		eNow.write(STR_PID_IMU_CONN, respMsg);		// Send to MAIN
+	  	#if LOG_CONN
+			LogPrintln(" LG] IMUCON " + respMsg + " o,c:" + String(oldimuStatus)+","+String(imuStatus));		// LOG
+	  	#endif
+		
+		oldimuStatus = imuStatus;
+	}
+#endif
+
+}
+
+
+/*---------------------------------------------------------
+----------------------------------------------------------*/
+void t1ms_Process()
+{
+	// 1) AD Read
+
+}
+
+
+/*---------------------------------------------------------
+----------------------------------------------------------*/
+void t10ms_Process()
+{
+	if(vrt_cont_flag) { rodVrtControl(); }			// VRT MOT 
+	if(btn_led_flag[0])	{ rodLfBtnLedControl();	}	// 0 = LEFT BTN LED
+	if(btn_led_flag[1])	{ rodRtBtnLedControl();	}	// 1 = RIGHT BTN LED
+	
+}
+
+//--------------------------------------------------
+//	1) ALIVE SEND WAIT ( 100ms )
+//	2) Send IMU CONN INFO (100ms)
+//	3) Send BATT LEVEL (100ms)
+//	4) Send ROD BOARD TYPE (100ms)
+//
+//	CALL for 100MS
+void sendRodInfo_forStep()
+{
+#if 0	
+		if(0)	{}	// Dummy
+	
+		else if(1 == recvInfoSeqStep )		// MAIN ALIVE RESP SEND
+		{
+			recvInfoSeqStep++;
+			// NOP - ALIVE RESP Wait
+		}
+		else if(2 == recvInfoSeqStep )		// IMU SEND
+		{
+		}
+		else if(3 == recvInfoSeqStep)	// BATT LVL SEND TIME
+		{
+	
+		}
+		else if(4 == recvInfoSeqStep )		// ROD보드TYPE SEND
+		{
+		}
+		else if(4 < recvInfoSeqStep)	// END
+		{
+		}
+#endif
+
+
+	switch(recvInfoSeqStep)
+	{
+		//case 0:		// 0인경우 들어오지 않음
+		//	break;
+		
+		case 1:			// Wait ALIVE SEND
+			recvInfoSeqStep ++;
+			break;
+		
+		case 2:		// IMU SEND
+			recvInfoSeqStep++;
+			imuConnResp();
+			#if LOG_CONN
+				LogPrintln(" LG] IMUCON o,c:" + String(oldimuStatus)+","+String(imuStatus));
+				//LogPrintlnus(" LG] IMUCON odl->curr: " + String(oldimuStatus)+","+String(imuStatus));
+			#endif
+			break;
+
+		case 3:		// Send BATT LVL
+			recvInfoSeqStep++;
+			
+			eNow.write(STR_PID_BATT_LVL, battery.restLvlStr);
+			#if LOG_CONN
+				LogPrintln(" LG] BATLVL o,c:" + String(battery.rest_lvl)+","+String(battery.old_restLvl));
+				//LogPrintlnus(" LG] BATLVL odl->curr: " + String(battery.rest_lvl)+","+String(battery.old_restLvl));
+			#endif
+			break;
+			
+		case 4:		// Send TYPE
+			recvInfoSeqStep++;
+			sendInfo_boardType();
+			break;
+			
+		default:
+			recvInfoSeqStep = 0;	// END
+			break;
+	}
+
+}
+
+//---------------------------------------------
+// 낚시대(REEL) 교체 CONTROL
+//---------------------------------------------
+
+unsigned int rodRegistToStep = 0;	// TO control Step
+
+//TO정지
+void rodRegistToStop()
+{
+	rodRegistToStep = 0;	// Start
+  #if (LOG_ROD_REGI_TO_STEP)
+	LogPrintln(" LG] rosRG TO Stop");
+  #endif
+}
+
+// TO 확인 개시
+void rodRegistToStart()
+{
+	rodRegistToStep = 10;	// 10SEC T/O Start	
+#if (LOG_ROD_REGI_TO_STEP)
+	LogPrintln(" LG] rosRG TO 20 Sec START");
+#endif
+}
+
+void rodRegi3secToStart()
+{
+	rodRegistToStep = 30;	// 3SEC T/O  Start
+#if (LOG_ROD_REGI_TO_STEP)
+	LogPrintln(" LG] rosRG TO 3 Sec START");
+#endif
+}
+
+
+//#define ROD_REGI_CANCEL_TO	(20*1000)	// 20 SEC
+#define ROD_REGI_CANCEL_TO	(15*1000)	// 15 SEC
+//#define ROD_REGI_END_TO		(3*1000)	// 3 SEC
+//#define ROD_REGI_END_TO		(2500)	// 2.5 SEC
+#define ROD_REGI_END_TO		(3500)	// 3.5 SEC
+void rodRegistToControl()
+{
+	static unsigned int oldStep = 0;
+	static unsigned long _to = 0;
+
+	switch(rodRegistToStep)
+	{
+		case 0:
+			break;
+			
+		case 10:	//Start
+			setTO(_to);
+			rodRegistToStep = 11;
+			break;		
+		case 11:
+			if(checkTO(_to, ROD_REGI_CANCEL_TO))
+			{
+				// Rod Regist Cancel
+				rodRegistCancel();		// MODE CLR
+				rodRegistToStep = 0;		// to IDLE
+				#if (LOG_ROD_REGI_TO_STEP)
+					LogPrintln(" LG] rodReg 20 SEC T/O");
+				#endif
+			}
+			break;
+
+		case 30:	//Start
+			rodRegistToStep = 31;
+			setTO(_to);
+			break;
+		case 31:
+			if(checkTO(_to, ROD_REGI_END_TO))
+			{
+				rodRegistCancel();		// MODE CLR
+				rodRegistToStep = 0;		// to IDLE
+				#if (LOG_ROD_REGI_TO_STEP)
+					LogPrintln(" LG] rodReg ROD_WRITE FINISH");
+				#endif
+				//ESP.restart();
+				ESP_Soft_Reset();
+			}
+			break;
+			
+		default:
+			break;
+	}
+}
+
+// 등록 취소, Mode CLR
+void rodRegistCancel()
+{
+	rodRegistMode = 0;
+}
+
+
+// 버튼 Check Counter
+// L버튼 3초 이상 누른 경우, BroadCast로 보냄.
+//
+unsigned int btn_L_DownCnt = 0;
+unsigned int AddrWrite_LedBlink = 0;
+
+
+/*---------------------------------------------------------
+//
+----------------------------------------------------------*/
+void t100ms_Process()
+{
+
+	// Power On Process
+	if(rodPowerOnFlag)
+	{
+		rodPowerOnFlag = 0;	// CLR , Exec Once Only
+		sendInfo_boardType();
+	}
+	
+	//=== INFO REQ STEP
+	if(recvInfoSeqStep)	// Req SEQ (not 0, Step Process)
+	{
+		sendRodInfo_forStep();
+	}
+	//===
+
+// == IMU AGING TEST( IMU data출력)
+#if (TEST_ROD_POWER_CONSUMPTION_TEST)
+	if(exeFlag_RodImuOutCycle)
+	{
+		execRod_ImuOutCycle();	  // Cycle
+	}
+#endif
+
+//== ROD등록 "L"길게 누름 CHECK
+	//#define L_BTN_LONG_TIME	3000	// 3초
+	#define L_BTN_LONG_TIME	2500	// 2.5초
+//== ROD L버튼 누른 시간 Check
+	if(btn_L_DownCnt)
+	{
+		btn_L_DownCnt++;
+		if((L_BTN_LONG_TIME/100) < btn_L_DownCnt)	// 2.5초 Over
+		{
+			
+			rodRegistMode = 55;		// ROD REGIST ENTRY
+
+			btn_L_DownCnt = 0;
+			
+			#if (LOG_NOW_SENT)
+				rodBtnLong_nowSent = 1;		// LOG OUT Once NOW SENT CB
+			#endif
+
+			// 2) BC로 주소 송부
+			eNow.addPeerAddress(broad_cast_addr);
+
+			String rodAddr = eNow.getMyAddress();
+			//eNow.write(STR_PID_CTRL_NUM, "$0600000016%");		// L버튼 LONG DOWN
+			eNow.writeBC(STR_PID_ROD_ADDR_WRITE, rodAddr); 	// L버튼 LONG DOWN , ROD=>MAIN
+			#if (LOG_BTN_LONG)
+				LogPrintln(" LG] BtnLong 2.5 sec: " + rodAddr);
+			#endif
+
+			// TBD_, 메인에서 명령이 안오는 경우는 CANCEL처리 필요.(20초?)
+			rodRegistToStart();
+			
+			// LED Blink SET
+			AddrWrite_LedBlink = 1;	// LED Blink Set
+
+			// TBD, Peer DisConnection?
+
+			//----
+		}
+	}
+
+//== ROD등록 LED점멸 Control
+	#define ROD_REGI_LED_BLINK_TIME	1000	// 1 SEC
+	// led Blink
+	if(AddrWrite_LedBlink)
+	{
+		led1Grn_OutSts = !led1Grn_OutSts;
+		digitalWrite(LED1_GRN_PIN, led1Grn_OutSts); 	// NORMAL : Green(스위치부) LED Blink 1SEC
+		AddrWrite_LedBlink++;
+ 		if((ROD_REGI_LED_BLINK_TIME/100) < AddrWrite_LedBlink)
+		{
+			// 1) STOP BLINK
+			AddrWrite_LedBlink = 0;
+		}		// BLINK STOP (1초간만 Blinking)
+
+	}
+
+//== ROD등록 T/O Control
+	if(rodRegistMode)
+	{
+		rodRegistToControl();
+	}
+	
+}
+
+/*---------------------------------------------------------
+//
+----------------------------------------------------------*/
+void t500ms_Process()
+{
+
+	// 1) AD Read, Batt Level
+	//unsigned bat_chk_us = micros();
+	
+  #if BAT_KAL_FILTER
+	battery.scanKalFilter();
+  #else
+	battery.scanAvgInteg();
+  #endif
+
+	//LogPrintlnus(" LG] BatRead Time us:" + String(micros()-bat_chk_us));
+
+}
+
+/*---------------------------------------------------------
+//
+----------------------------------------------------------*/
+void t1sec_Process()
+{
+	// 1 - Local 1sec Count
+  /*
+	local_10secCnt++;
+	if(9 < local_10secCnt) { local_10secCnt = 0; }		// Count  1 ~ 10
+  */
+
+	// 2) ROD_ALIVE_CHK Recved Check
+	rodAliveRecvTOCheck();
+
+#if (FUNC_SLEEP_ENTRY)
+	// 3) Not USE - Sleep Entry Check
+	sleepEnteranceCheck();
+#endif
+
+	// 4) IMU Connection Polling
+	imuConnectCheck();
+
+	// 5) Send BAT LEVEL (each 1 SEC)
+	battChangeCheckSend();
+
+	// 6) LED Display OUT
+	rodLed1SecControl();
+
+}
+
+//-----------------------------------------------------
+//  낚시대 LED 제어
+//	Call 1 SEC
+void rodLed1SecControl()
+{
+	if(rodAliveRcv_LedBlinkFlag)
+	{
+		//digitalWrite(LED2_G_PIN, !digitalRead(LED2_G_PIN)); 	// NORMAL : Green LED Blink 1SEC
+		if(!AddrWrite_LedBlink)
+		{
+			led1Grn_OutSts = !led1Grn_OutSts;
+			digitalWrite(LED1_GRN_PIN, led1Grn_OutSts); 	// NORMAL : Green(스위치부) LED Blink 1SEC
+		}
+		led2Red_OutSts = !led2Red_OutSts;
+		digitalWrite(LED2_RED_PIN, led2Red_OutSts); 	// NORMAL : Red(CPU보드부) LED Blink 1SEC
+	}
+	else
+	{
+		//digitalWrite(LED2_G_PIN, HIGH); 	// MAIN Not OP : HIGH
+		if(!AddrWrite_LedBlink)
+		{
+			led1Grn_OutSts = HIGH;
+			digitalWrite(LED1_GRN_PIN, led1Grn_OutSts); 	// MAIN Not OP :  GREEN ON
+		}
+		led2Red_OutSts = LOW;
+		digitalWrite(LED2_RED_PIN, led2Red_OutSts);	// MAIN Not OP :  BLUE OFF
+	}
+}
+
+/*
+=====================================
+              Running Timer
+=====================================
+ */
+unsigned int system_delay_cnt = 0;
+
+void run_timer()
+{
+	unsigned int add_tick = 0;
+
+#if (LOG_SYS_US_CHK)
+	curr_us_tick = micros();		// micro times
+#endif	
+	curr_ms_tick = millis();
+	if(oldcurr_ms_tick != curr_ms_tick)
+	{
+		// TBD System Run TImer & System Count(1ms,10ms,100ms,1sec )
+		if(curr_ms_tick > oldcurr_ms_tick)
+		{
+			add_tick = (int)(curr_ms_tick - oldcurr_ms_tick);
+		}
+		else
+		{
+			add_tick = (int)((0xFFFFFFFF - oldcurr_ms_tick) + 1 + curr_ms_tick);
+		}
+
+		sys_1ms_cnt += add_tick;		// system 1ms ++
+
+		run_time_1ms += add_tick;
+		
+gotoSystemTimer:
+	
+		if( 9 < run_time_1ms)	// 10ms
+		{
+			//run_time_1ms = (run_time_1ms - 10);
+			run_time_1ms -= 10;
+			
+			sys_10ms_cnt++;
+
+			run_time_10ms++;
+			if( 9 < run_time_10ms)	// 100ms
+			{
+				run_time_10ms -= 10;
+				
+				sys_100ms_cnt++;
+
+				run_time_100ms++;
+
+				if(!(run_time_100ms % 5))		// 500ms
+				{
+					sys_500ms_cnt++;
+				}
+
+				if( 9 < run_time_100ms)	// 1000ms
+				{
+					run_time_100ms -= 10;
+					
+					sys_1sec_cnt++;		// 1 SEC
+					// run_time_1sec++;
+				}
+				
+			}
+		}
+
+		if(9 < run_time_1ms)	// 
+		{
+			goto gotoSystemTimer;
+		}
+		
+	  #if LOG_SYSTICK_DELAY
+		//if(10 < add_tick)
+		//if(5 < add_tick)
+		if(2 < add_tick)
+		{
+			// TBD
+			// error = sys delay = not good performance !!!
+			system_delay_cnt++;
+			LogPrintln(" LG] SYSTIK ROD Delay " + String(add_tick) + "ms ,cnt:" + String(system_delay_cnt));
+		}
+	  #endif
+
+		oldcurr_ms_tick = curr_ms_tick;
+
+	}
+
+}
+
+//------------------------------------------------------------------
+//
+//
+//------------------------------------------------------------------
+void ioPinSetting()
+{
+
+	//== SET Pin Mode (INPUT)
+
+	//--Setup Mode Switch
+	pinMode(SETUP_MODE_PIN, INPUT);
+
+	//=== SET Pin Mode ( OUT )
+	// BRD LED
+	pinMode(LED1_GRN_PIN, OUTPUT);
+	pinMode(LED2_RED_PIN, OUTPUT);
+
+	// BTN LED
+	pinMode(BTN_LED_LF_RED_PIN, OUTPUT);
+	pinMode(BTN_LED_RT_BLUE_PIN, OUTPUT);
+
+	//if(isRodNewBoard())
+	if(BREAK_YES == getBreakType())	// OLD ROD
+	{
+		pinMode(DC24VON_PIN, OUTPUT);
+		digitalWrite(DC24VON_PIN, LOW); 		// 24V_DC OFF
+	}
+	else							// NEW
+	{
+		pinMode(VRT_MOT_ON_PIN, OUTPUT);
+		digitalWrite(VRT_MOT_ON_PIN, VRT_MOT_OFF); 		// VRT MOT OFF
+	}
+
+}
+
+//---------------------------------------------------------------
+// File System Mount Check
+//---------------------------------------------------------------
+void checkFileSystem()
+{
+	// FILE System INIT with FORMAT & Reset
+	if (!SPIFFS.begin())		// without FORMAT
+	{
+		#if (LOG_FS_FORMAT_START)
+			LogPrintln(" LG] FS Format Start");
+		#endif
+		
+    	SPIFFS.format();	// About 30sec
+		
+		#if (LOG_FS_FORMAT)
+			LogPrintln(" LG] SPIFFS NG, FORMAT, then EPS Restart");
+		#endif
+		
+		//delay(2000);
+		delay(10);		// Format후 Reset 안정화(?) 시간
+		
+    	//ESP.restart();
+		ESP_Soft_Reset();
+	}
+
+	// OK시만 처리됨
+	#if (LOG_SPIFFS_OK)
+		LogPrintln(" LG] SPIFFS OK");
+	#endif
+}
+
+
+/*------------------------------------------------------------------
+   SETUP Arduino
+------------------------------------------------------------------*/
+void setup()
+{
+
+	//==
+	curr_ms_tick = millis();
+
+	//== SET Serial USB CDC UART (PC-Slave)
+	Serial.begin(115200);
+	Serial.setTimeout(10);
+	//Serial.println();
+
+#ifdef	DbgSerial
+	DbgSerial.begin(115200, SERIAL_8N1, DEBUG_RX_PIN, DEBUG_TX_PIN);		// TXD_0 / RXD_0(Vr1.0.1.0)
+	DbgSerial.setTimeout(10);		  // wait 10ms, Default 1SEC
+#endif
+
+	//== 보드 Type판별
+  #if (ROD_BDTYPE_DETECT)
+	//pinMode(BOARD_TYPE_PIN, INPUT);
+	pinMode(BOARD_TYPE_PIN, INPUT_PULLUP);
+	rodBoardType = setBoardType();		// Board Type SET
+  #endif
+	settingIOtype();	// SET Type for EACH IO by BOARD Type
+
+	//== 1)핀 입출력 모드 설정
+	// 보드 TYPE설정 포함
+	ioPinSetting();
+
+	//== SETUP MODE 읽기
+	setSlaveMode();		// Slave Mode SET
+	
+	//== 3) Power ON, LED깜빡 제어
+	// LED3 Binking 3 times ( ON/OFF Toggle 6 times each 50ms For 300ms )
+	int cnt = 0;
+	while (cnt < 6)		// 300ms = 50ms * 6 times
+	{
+	  cnt++;
+	  //digitalWrite(LED3_R_PIN, !digitalRead(LED3_R_PIN));
+	  led1Grn_OutSts = !led1Grn_OutSts;
+	  digitalWrite(LED1_GRN_PIN, led1Grn_OutSts);
+	  led2Red_OutSts = !led2Red_OutSts;
+	  digitalWrite(LED2_RED_PIN, led2Red_OutSts);
+	  delay(50);	// 50ms마다 깜빡
+	}
+	
+	//== LED2,3 All OFF
+	//digitalWrite(LED3_R_PIN, LOW);
+	//digitalWrite(LED2_G_PIN, LOW);
+	// 보드 LED 출력
+	led1Grn_OutSts = LOW;
+	digitalWrite(LED1_GRN_PIN, led1Grn_OutSts);
+	led2Red_OutSts = LOW;
+	digitalWrite(LED2_RED_PIN, led2Red_OutSts);
+
+	//== 버튼 LED출력
+	btnLFLedRed_OutSts = BTN_LED_OFF;		// Not Active
+	digitalWrite(BTN_LED_LF_RED_PIN, btnLFLedRed_OutSts);
+	btnRTLedBlue_OutSts = BTN_LED_OFF;		// Not Active
+	digitalWrite(BTN_LED_RT_BLUE_PIN, btnRTLedBlue_OutSts);
+	
+
+  #if (LOG_POWER_ON_VER)
+	LogPrintln(" LG] VER:" + String(rodVer));
+  #endif
+
+	//== File System Mount Check
+  	checkFileSystem();		// Format후 Reset
+  	
+	//== GET Target Mac Address, Addr NG시 Deafult SET : FF~FF
+	eNow.bindTargetAddress();	// eNow Target Addr Load, TBD-Error처리
+	
+	//== IMU SERAIL_1 SET
+	imuSerial.begin(115200, SERIAL_8N1, IMU_RX, IMU_TX);	// Return Thing
+
+	//== imu AutoOutSet
+	if(0 != imu.checkSetupFileVal())	// 0-OK, else-NG
+	{
+		// imu Out Setup
+		#if (LOG_IMU_AUTOSET_START)
+			LogPrintln(" LG] IMU OUT AUTO_SET Start");
+		#endif
+		imu.autoSetup();
+		// File "100"저장
+		short len = imu.saveInterval(IMU_INTV_DEFAULT_TIME);	//// Write Byte수, Intv=100ms
+	  #if (LOG_IMU_AUTOSET)
+	  	//short intvVal = String(imu.getIntervalFileStr());
+		if(len)	{ LogPrintln(" lg] imu File Save OK len:" + String(len) + "," + imu.getIntervalFileStr()); }
+		else	{ LogPrintln(" lg] imu File Save NG"); }
+	  #endif
+		//delay(1000);
+		//ESP_Soft_Reset();
+	}
+	else
+	{
+	  #if (LOG_IMU_AUTOSET)
+		LogPrintln(" lg] IMU Intv: " + imu.getIntervalFileStr());
+	  #endif
+	}
+
+	//== @@ Sleep & Wakeup
+#if (SLEEP_SET)	// Delete SLEEP
+		esp_sleep_wakeup_cause_t wakeup_reason;
+		wakeup_reason = esp_sleep_get_wakeup_cause();
+		esp_err_t wakeup_set_err;
+		// wakeup_set_err = esp_sleep_enable_ext0_wakeup(GPIO_NUM_5, HIGH); 			// wakeup when GPIO-NUM5 is LOW - SLEEP NG
+		wakeup_set_err = esp_sleep_enable_ext0_wakeup(GPIO_NUM_5, LOW); 			// wakeup when GPIO-NUM5 is HIGH - SLEEP OK
+		//wakeup_set_err = esp_sleep_enable_ext0_wakeup(GPIO_NUM_41, LOW);				// wakeup when GPIO-NUM 41 is HIGH - SLEEP OK
+		// Not NEED Entry DEEP_SLEEP at PowerOn, 24/5/23
+	
+		if (0 == wakeup_reason && !digitalRead(SETUP_MODE_PIN)) // reason 0 [PowerOn] & Not Setup Mode
+		{
+			LogPrintln(" LG] SLPENT Enterence Deep_Sleep");
+			delay(500);
+			esp_deep_sleep_start();
+		}
+#endif
+	  	
+	//=== INIT OBJ
+	sBtn.init();	// PIN설정, Type결정
+	imu.init();		// IMU SERIAL 1 설정
+
+	//==== MODE SELECTION  : NORMAL/SETUP
+	if(0) { /* dummy*/ }
+	
+	//==Setup Mode ?
+	//if (!digitalRead(SETUP_MODE_PIN))	// Normal Mode
+	if (isSlaveSetupMode())			// SetUp Mode?
+	{
+		// IMU Stop Stepup Mode
+		imu.setStartStop(IMU_CONF_STOP);			// IMU STOP
+  		flagIMUSTOP = 1;
+	
+		// Output LED3 ON
+		//digitalWrite(LED3_R_PIN, HIGH);		// SETUP MODE : RED ON
+		led2Red_OutSts = HIGH;
+		digitalWrite(LED2_RED_PIN, led2Red_OutSts);		// SETUP MODE : RED ON
+  		#if (LOG_POWER_ON_MODE)
+			LogPrintln(" LG] ROD_PWR SETUP");
+		#endif
+	}
+	
+	//==Normal Mode?
+	else
+	{
+		// INIT enow,Encoder,Motor Only Normal Mode
+		eNow.init(recv_cb_esp_now_msg);
+		if( ESP_OK != esp_now_register_send_cb(sent_cb_esp_now_sts))
+		{
+			LogPrintln(" LG] Error NOW SENT_CB_REGIST NG");
+		}
+		
+		encoder.init();
+		//#if (ROD_BOARD_V2)
+		//if(isRodNewBoard())
+    	if(BREAK_NO == getBreakType())	// NEW ROD
+		{
+			// N.A
+		}
+		else		// V1 = Old ROD
+		{
+			brkMotor.init();
+		}
+		battery.init();
+		//    imu.init();
+		
+		// Set Callback Funtion encoder/Btn/imu, Only Norma Mode
+		encoder.setRotateCallback(rotateChangeCallback);
+		sBtn.setSwitchCallback(btnChangeCallback);
+		imu.setStateCallback(imuDataCallback);
+	
+		imu.setStartStop(IMU_CONF_START);			// IMU START
+	
+		led1Grn_OutSts = HIGH;
+		digitalWrite(LED1_GRN_PIN, led1Grn_OutSts);
+		
+		//#if (ROD_BOARD_V2)
+		//if(isRodNewBoard())
+    	if(BREAK_YES == getBreakType())	//// V1 = Old ROD
+		{
+			digitalWrite(DC24VON_PIN, HIGH);			// 24V_DC ON
+		}
+
+		#if (LOG_POWER_ON_MODE)
+			LogPrintln(" LG] ROD_PWR Normal");
+		#endif
+ 
+	}
+
+	//== FLAG & VAR INIT
+	rodPowerOnFlag = 1;		// PowerOn후 MAIN에 ROD정보 송부용 Flag
+	// set Not Recv Now Msg(pid)
+	now_rcv_id = PID_NOT_RECVED;
+	//system Delay Count CLR
+	system_delay_cnt = 0;
+
+	LogPrintln(" LG] PWRON_ time:" + String(millis()-curr_ms_tick));
+
+	// System Timer CLR
+	curr_ms_tick = millis();
+	oldcurr_ms_tick = curr_ms_tick;
+
+}
+
+
+int pwrOn1st_loop = 0;
+int resp_imu = 0;
+/*------------------------------------------------------------------------
+  Arduino Loop
+------------------------------------------------------------------------*/
+void loop()
+{
+
+	//==== System Run Timer & Counter
+	run_timer();			// Freerun Timer & System Counter() 1ms, 10ms, 100ms, 1 sec)
+
+	//===== MODE SELECTION
+
+	//-- SETUP
+	//Setup Mode (Mac Address & Imu Config Setup)
+	//if (digitalRead(SETUP_MODE_PIN))
+	if (isSlaveSetupMode())
+	{
+
+  		if(0 < sys_1ms_cnt)
+		{
+			sys_1ms_cnt--;
+			
+ 			if(0 < sys_10ms_cnt)
+			{ 
+				sys_10ms_cnt--; 
+
+				//==10ms마다 처리, SETUP은
+				// recv PC
+				uartPcHandler_Setup();			// Recv CMD from PC exxcute & Response
+				// recv IMU
+				resp_imu = imu.uartRecv_Setup(); 		// Slave-IMU
+				// TBD : LOG
+			}
+			if(0 < sys_100ms_cnt)	{ sys_100ms_cnt--; }
+			if(0 < sys_500ms_cnt)	{ sys_500ms_cnt--; }
+			if(0 < sys_1sec_cnt)	{ sys_1sec_cnt--; }
+  		}
+
+	  	#if 0	// DEL 50ms => 10ms
+		//delay(50);				// 50ms CALL in SETUP
+
+		//if(0 == (run_time_10ms % 5))	// each 50MS
+		if(0 == (run_time_10ms % 2))	// each 20 MS
+		{
+			// recv PC
+			uartPcHandler_Setup();			// Recv CMD from PC exxcute & Response
+			// recv IMU
+			resp_imu = imu.uartRecv_Setup();			// Slave-IMU
+			// TBD LOG
+		}
+	 	#endif
+	}
+
+	//-- Normal Mode
+	else			
+	{
+		// 1 ms처리 , NORMAL
+  		if(0 < sys_1ms_cnt)
+  		{
+			chk_ms_tick = millis(); 	// Read Current Tick
+			
+  			sys_1ms_cnt--;		// 1ms마다 실행.
+
+			// TBD, 1ms INput READ(Button)
+			// TBD, 10ms/100ms INPUT READ
+
+			// recv MAIN
+			nowRecvHandler();			//1ms eNow(MAIN->SLAVE)
+			// recv PC : uartHandlerNormal();			// Recv CMD from PC exxcute & Response
+			uartPcHandler_NormalMode();
+
+			//battery.scan();	// Move to 100ms Process
+		  #if (IO_IMU)
+			resp_imu = imu.uartRecv_Normal();			// 1ms IMU Data Read 5ms
+		  #endif
+			
+		  #if (LOG_PWRON_TIME)
+			if(!pwrOn1st_loop)
+			{
+				pwrOn1st_loop = 1;
+				LogPrintln(" LG] LP_CHK 1st PowerOn, imuResp: " + String(resp_imu) + " ok/ng/NotResp");
+			}
+		  #endif
+		  
+			//
+			encoder.rotate();		// 1ms Handle Encoder
+			//
+			sBtn.toggle();			// 1ms Button Toggle READ
+
+			//=================================
+			//-- Timer 1ms,10ms,100ms,1sec EXEC-----
+			//t1ms_Process();	// NA
+
+			if(0 < sys_10ms_cnt)
+			{
+				sys_10ms_cnt--;
+				t10ms_Process();	// NA			
+			}
+		
+			if(0 < sys_100ms_cnt)
+			{
+				sys_100ms_cnt--;
+				t100ms_Process();	// 
+			}
+
+			if(0 < sys_500ms_cnt)
+			{
+				sys_500ms_cnt--;
+				t500ms_Process();	// 
+			}
+		
+			if(0 < sys_1sec_cnt)
+			{
+				sys_1sec_cnt--;
+				t1sec_Process();
+				// Alive, Sleep Check
+				// batt Level Change Check
+				// imu Connect Check
+				//LogPrintln(" LG] SyT_1s " + String(sys_100ms_cnt) + "," + String(sys_1sec_cnt) + "[100ms,1sec]");
+			}
+
+			// Check Delay Time
+		  	#if (LOG_1MS_EXE_DELAY)
+				if(1 < (millis()-chk_ms_tick))
+				{
+					LogPrintln(" LG] 1msExe Delay:" + String(millis()-chk_ms_tick)+" ms");
+				}
+		  	#endif
+		}
+		// 1ms Call in NORMAL
+		//delay(1);
+	}
+}

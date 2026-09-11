@@ -1,0 +1,47 @@
+# Visual Studio and editor state
+.vs/
+*.user
+*.suo
+*.VC.db
+*.VC.VC.opendb
+
+# Generated firmware artifacts
+/Vm1.0.9.0/DF_Main/build/
+/Vr1.0.1.0/build/
+/firmware/DF_Main/build/
+/firmware/DF_Rod/build/
+artifacts/
+/bin/
+**/bin/
+**/obj/
+/vs/x64/
+/legacy/TM_V034/packages/
+*.bin
+*.elf
+*.map
+*.hex
+
+# Bundled executable tools and archives
+*.exe
+*.zip
+*.pfx
+
+# Integrated parent repository must retain required project inputs.
+!*.sln
+!**/*.csproj
+!/testModule/esptool_V4.5.1.exe
+!/ESP32Servo-1.1.2.zip
+
+# Superseded image-generation intermediate; reel-top-v2.png is the active asset.
+/testModule/Assets/reel-top.png
+
+# Machine-local settings
+toolchain/
+local.settings.cmd
+*.local.cmd
+.env
+
+# Temporary files
+*.tmp
+*.bak
+*~

@@ -1,0 +1,22 @@
+# Preserve the imported firmware source bytes as the initial refactoring baseline.
+*.ino -text
+*.cpp -text
+*.h -text
+
+# Keep repository documentation and scripts consistent across development PCs.
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary artifacts must never receive line-ending conversion.
+*.zip binary
+*.bin binary
+*.elf binary
+*.map binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary

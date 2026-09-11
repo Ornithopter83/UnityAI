@@ -1,0 +1,317 @@
+//
+//
+//
+
+// Version
+#if (NEW_IF)
+	//String rodVer = "Dr00.04.03.61";		// IMU Auto SET
+	//String rodVer = "Dr00.04.04.00";
+	//#if (TEST_VRT_MOT)
+	//	String rodVer = "Dr0.5.0.70";			// test Vrt Mot
+	//#else
+	//	String rodVer = "Dr0.5.0.0";
+	//#endif
+	//String rodVer = "Vr1.0.0.0";
+	String rodVer = "Vr1.0.1.0";
+#else
+	String rodVer = "Dr00.01.06.00";
+#endif
+
+/* History
+// Vs xx.yy.zz - yyyy/mm/dd, Reason
+// Next REL Dr00.02.03.00
+//========================================
+
+// Vr1.0.1.0	2025/12/23 
+	-REEL 엔코더 수식 변경
+	
+//== REL Vr1.0.0.0, 25/4/28 (보드생산용)
+	- 버전만 변경
+
+// Dr0.5.0.70	// TEST EP
+	-버튼을 누르면 진동모터 1초 ON
+	
+//=== REL, Dr0.5.0.0   25/4/7
+// Dr0.5.0.62	25/4/7
+	- Move IMU간격 측정 이동 : Reel (PID:34삭제)=> Cont
+	
+// Dr0.5.0.61	25/4/3
+	- AP타입(DF or TM) 추가 (PID:33)
+	- IMU 데이타 출력 인터벌[ms] 측정(IMU데이타On시 실시) 및 측정값 응답(PID:34)
+
+// Dr0.5.0.60, 25/4/2a
+	- 보드구별 삭제 (NEW보드 고정)
+	- TM IO확인추가(보드생산용)
+	
+//=== REL D0.4.4.0,	25/3/21
+	- LOG = 0 설정
+	
+//Dr0.4.3.61
+	- Interval설정시 File저장
+	- 미설정 조건에서 [값 20미만]조건 삭제
+	
+//Dr0.4.3.60
+	- imu : Auto Out Set For생산
+	- imu : 수신 측정 20ms보다 작으면(IMU defaut 10ms) System DEFAULT (100ms)로 설정
+	
+//=== REL Dr0.4.3.0, 25/3/5
+
+//	Dr0.4.2.1	25/3/4
+	- Ver Resp : RodVer Add
+	- Main OFF CMD, LOG Out
+	- OUT ALL OFF(29)추가
+	
+//=== REL Dr00.04.02.00, 25/2/28
+	- Handle Counter 10카운터 -> 8카운터
+
+//Dr00.04.01.40, 25/2/25
+	- BTN LED IF추가
+	
+//===REL Dr00.04.01.00, 25/2/24
+// Dr00.04.00.61, 25/2/24
+	- BTN LED IF($24 => 27 )
+// Dr00.04.00.60, 25/2/24
+	- VRT_MOT($23=>19), BTN_LED
+	
+//===REL Dr00.04.00.00, 25/2/21
+
+// Dr00.03.09.80, Overwrite/Delay IMPROV, 25/2/20
+	-CB Data Save/CLR개선
+	
+// Dr00.03.09.80, Overwrite/Delay IMPROV, 25/2/20
+	- MainId-Odd, Rod id - Even
+
+// Dr00.03.09.71, Overwrite/Delay IMPROV, 25/2/20
+	- Code 정리
+	
+// Dr00.03.09.70, IMPROV
+   [id+chStr] => [String]
+   
+// Dr00.03.09.60, IMPROV
+	- pid: int -> short
+	- Ver : 20 -> 19/20
+	- Str : 32 -> 28
+	- ImuData : 12,14 => 13,14
+
+//===REL Dr00.03.09.00==
+	- ROD REGIST
+	
+// DrDr00.03.06.33, 25/2/17, 지연개선
+	-memcpy함수 사용
+	
+// DrDr00.03.06.32
+	-ROD REGIST
+	
+// Dr00.03.06,31, 25/02/14
+	- 메인 주소 수신
+	
+// Dr00.03.06,31, 25/02/14
+	- ROD 설정된 타켓주소가 아니면 now수신Msg버림
+
+// Dr00.03.06,30, 25/02/13
+	- ROD Mac SET
+
+//=== REL Dr00.03.06.00, 25/2/12
+// Dr00.03.05.70 REL TEST, 25/2/12
+
+// Dr.00.03.05.64, 25/1/16
+	- ADD CMD($F0) File System Format추가
+	- Delete [IMU START/STOP] by [GAME ENB/DIS] - NotUse부분 삭제
+	- Delete Check (!Serial()) - Serail통신포트가 존재여부를 Check하는 부분(테스트용으로 불필요 부분)을 삭제
+	- SetupMode진입시 [IMU STOP] 추가 = []JYRO ENB]실행때 OK.NG수신 대책
+	- Normal때 Batt Power Ageing TEST CMD처리 추가
+	- SetUP모드 나올때 ESP-Reset추가( IMU Start, Serial Buffer CLR)
+	- SetUP의 JYRO INIT(자이로 캘리브레이션)시 리턴String추가
+	- SetUP의 인터벌(ms) 설정시 리턴String추가
+	- 타켓주소 설정때 NULL POINT발생시 더이상 처리안함(break;)를 추가
+// Dr00.03.05.60, 25/1/13
+	-Reset Shooting at IMU_newBoard 
+	 => IMU Parsing부분에서 NULL POINT발생시 더이상 처리안함(break;)을 추가
+	 => IMU초기값 6개(-0.01)설정 추가
+	- Seperatte Seletion IO each PART(Board / Button /Break /Encoder /Batt )
+	-NewBoard Addr Set NG Follow
+	- Addr Read NG(at Setup) => Delete Debug LOG(불필요 부분) = SETUP때 MAC주소 읽기 안됨 대책
+
+// "Dr00.03.05.43"
+	- 불필요 LOG모두 출력 금지
+	
+// "Dr00.03.05.42"
+	- LOG출력 일부 수정
+
+// Test Alive NG
+	Dr00.03.05.42
+	- 채널 지정(6)  => NG: 통신 안됨
+	- 파워 지정(20dBm)
+
+// Test Alive NG
+	Dr00.03.05.41
+	- Send Call Back 추가 
+
+// Test Alive NG
+	Dr00.03.05.40
+	
+// == REL Dr00.03.05.00, 25/1/14
+	New Rod - Encoder Count * 10 / 12
+	
+//== REL, Dr00.03.04.00, 25/1/13
+	- Change Encoder , Count+2 => Count+1
+	- Batt Level MIN_AD 2674 => 2585 (2.9V)
+	
+//== REL, Dr00.03.03.00, 25/1/3
+	- Encoder +2 /2 로 변경(max = 20 = +40 /2)
+	-Batt Ad map Min(0%)값 변경 : 2228(2.5V = 0%) => 2674(3.0V=0%)
+	
+// == REL Dr00.03.02.00(NewRod + OldRod)
+	Ver통합 : 기존낚시대 + 신규낚시대
+
+// == REL Dr00.03.01.00(NewRod) / Dr00.02.04.00(OldRod)
+	5. 보드LED표시 변경
+// Dev Dr00.03.00.60 24/12/27
+	* Delete NEW_BTN_CABLE switch 
+	1. LeftBtn GPIO 4, SP1(GPIO8),SP2(GPIO9)
+	2. Delete Break Motor/COT
+	  - PWM(GPIO 38) Delete
+	3. BAT Level Change
+	4. Hall Encoder Change
+
+// == REL Dr00.02.03.00 , 24/12/24
+// Dev Dr00.02.02.60, 24/12/24
+	-ADD IO NewBoard#Detect IO39-Pullup처리
+	- ROD Board정보 자발(Power On)
+	- ROD Board정보 응답 (요구시 PID-5, PID - 6)
+
+	-other
+	1) Rod Alive응답중 배터리 잔량 삭제
+
+//===REL  Dr00.02.02.00 / Dr00.01.06.00
+	24/11/1
+	- Change to System Timer Loop 1ms , at SETUP MODE
+	- Add Return Addr [ Get Addr ] 1st Button Click
+
+//===REL  Dr00.02.01.00
+	24/10/31
+	- NewIF(K2.0) SetUp Pogram 
+	-Change Control Time 50ms => 10ms at SETUP Mode
+	- Delete All LOG OUT
+
+
+//===REL  Dr00.01.05.00
+	24/10/31
+	
+// Dev Dr00.01.05.60
+	24/10/30
+	NEW_IF Get/Set Address CMD Change ( $11 -> $16, $12 -> $17, $13 -> $91)
+	IMP TB(reboot)
+
+//===REL  Dr00.01.05.00
+	24/10/15 영업평가용
+
+// DevT Dr00.01.04.69
+	24/10/12
+	- Main상태 변경위치 조건문 안으로 변경.
+	 - 송신순서 추가 100ms 마다 MainAlive Resp/ Imu Conn/ Batt Level 순으로 통지.
+
+// DevT Dr00.01.04.68
+	24/10/11
+	- RESP_ROD_INFO for imu Connection
+	- IMU Send / 100ms / Batt SEND
+
+// DevT Dr00.01.04.67
+	24/9/23
+
+// DevT Dr00.01.04.66
+	24/9/21
+	- Batt Rest Level Read Period Change : 1.6 SEC (100ms * 16)  => 10 SEC ( 500ms * 20)
+	
+// DevT Dr00.01.04.65
+	24/9/20
+	-Batt Rest Level 3char : 001~099 => 000~099
+
+// TEST Dr00.01.04.64
+	24/9/19
+	- Delete ROD Power Consumption TEST FW
+	-
+	
+// TEST Dr00.01.04.63 , 24/9/14, 9/19
+	- 10 SEC = 6.7 SEC ON + 3.3 SEC OFF
+
+// TEST Dr00.01.04.62, 24/9/13
+	- ROD BOAD TEST : Battry Power Test (IMU out)
+	- 2 Min(120 Sec) Cycle Loop = 1Game
+	- SET $F5 : 1 - Cycle On / 0 - Cycle OFF
+	
+// Tr00.01.04.61 
+  24/9/10
+  	- System Timer Improve
+  	- Connection
+
+// Tr00.01.04.60 
+  24/9/9
+  	- System Timer Improve
+	-Connection, PowerOn Time(ROD / IMU)
+
+// REL - 240908 Vs00.01.04.00 - Conn
+
+// Ts00.01.03.63 24/9/5
+  -
+
+// Ts00.01.03.62 TEST Ver, 24/8/29
+-run time
+
+// Ts00.01.03.61 TEST Ver, 24/8/29
+-log
+-setup
+
+// Vs00.01.03.60(반전 미대응)   / Vs00.01.03.60Invt(반전 대응)= Vs00.01.03.00(반전)
+  240829, 핸들엔코더 반전부품 미대응/대응 Ver쉽게 구분하도록 Ver변경.
+  
+ // Ts00.01.03.00  Ver, 24/7/23
+   1)Change Encoder 방향 절환(Encoder부품 이상? 대응 - 해운대 3대 만)
+
+// Ts00.01.02.03 TEST Ver, 24/7/12
+   1) Board LED Blink Change
+  - Power On - GREEN LED 1 SEC Blink
+  - MAIN ENB - GREEN LED 500ms BLINK
+
+// TEST Ver, 24/7/10
+  Ts00.01.02.02 : Release HAEUNDAE
+  - Battery Rest : 0~100 => 1~100 %
+  
+// TEST Ver, 24/7/10 
+  Ts00.01.02.01
+
+// Vs 00.01.02.00, 2024/6/21
+  Reg Release
+  1) Delete SLEEP
+
+// Vs 00.01.01. 64,  2024/06/04
+  1) Encoder +/- Direction
+
+
+// Vs 00.01.01. 63 (IF : SLEEP),  2024/05/29
+	1) Follow : New Button Cable
+
+// Vs 00.00.01. 63 (IF : SLEEP),  2024/05/29
+  1) Add SLEEP ENTRY
+  2) Change IMU_CONN Response, Only Change(Status Edit)
+
+// Vs 00.00.01. 62(IF_IMU Conn)
+  2024/05/27
+   1) Change IMU Connection (with Recv IMU Data)
+   2) Not Entry SLEEP at Power ON
+   3) Change RX Buffer Size 64 byte => 128 Byte
+
+// Vs 00.00.01. 61(IF)
+  2024/05/23, Add IF
+
+// Vs 00.00.01.60
+   2024/05/01 - Sleep Control
+
+// Vs00.00.01 -
+  2024/4/30, Change Battrey Rest Level ( Min 1115(3.7V:0%) => 2795(9.0V:0%))
+  2024/4/19, IMU STOP at SETUP Mode
+  2024/4/19, Add Version
+  
+// Vs00.00.00 - 
+  2024/3/30, From Potents
+*/

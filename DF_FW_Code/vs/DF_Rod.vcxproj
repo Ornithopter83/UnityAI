@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{799D88A2-2624-45D3-84B6-C53D5D10ACB2}</ProjectGuid>
+    <Keyword>MakeFileProj</Keyword>
+    <RootNamespace>DF_Rod</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration"><ConfigurationType>Makefile</ConfigurationType><UseDebugLibraries>true</UseDebugLibraries><PlatformToolset>v143</PlatformToolset></PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration"><ConfigurationType>Makefile</ConfigurationType><UseDebugLibraries>false</UseDebugLibraries><PlatformToolset>v143</PlatformToolset></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <Import Project="DF_Arduino_ESP32S3.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" /></ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" /></ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <NMakeBuildCommandLine>call "$(ProjectDir)..\tools\build-rod.cmd" "$(Configuration)" "$(Platform)"</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>call "$(ProjectDir)..\tools\build-rod.cmd" "$(Configuration)" "$(Platform)"</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>call "$(ProjectDir)..\tools\clean-rod.cmd" "$(Configuration)" "$(Platform)"</NMakeCleanCommandLine>
+    <NMakeOutput>$(ProjectDir)..\artifacts\firmware\DF_Rod\DF_Rod.ino.bin</NMakeOutput>
+    <NMakePreprocessorDefinitions>$(DFArduinoPreprocessorDefinitions);$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
+    <NMakeIncludeSearchPath>$(ProjectDir)..\firmware\DF_Rod;$(ProjectDir)..\firmware\DF_Rod\src;$(ProjectDir)..\libraries\DFProtocol\src;$(DFArduinoIncludeSearchPath);$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
+    <NMakeForcedIncludes>$(DFArduinoForcedIncludes);$(NMakeForcedIncludes)</NMakeForcedIncludes>
+  </PropertyGroup>
+  <ItemGroup>
+    <ClCompile Include="..\firmware\DF_Rod\DF_Rod.ino"><CompileAs>CompileAsCpp</CompileAs></ClCompile>
+    <ClCompile Include="..\firmware\DF_Rod\src\DF_Rod_Application.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\DF_Rod_State.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\modules\DF_Rod_Communication.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\modules\DF_Rod_SetupProtocol.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\modules\DF_Rod_BatteryMonitor.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\modules\DF_Rod_PowerAndImu.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\modules\DF_Rod_Registration.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\modules\DF_Rod_SchedulerAndInput.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\modules\DF_Rod_Ota.cpp" />
+    <ClCompile Include="..\libraries\DFProtocol\src\DFProtocol.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\Battery.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\EB_IMU.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\ENow.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\Encoder.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\Potentiometer.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\SwitchButton.cpp" />
+    <ClCompile Include="..\firmware\DF_Rod\src\Version.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\firmware\DF_Rod\src\Battery.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\Common.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\DF_Rod_Application.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\DF_Rod_Internal.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\DF_Rod_State.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\modules\DF_Rod_Communication.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\modules\DF_Rod_SetupProtocol.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\modules\DF_Rod_BatteryMonitor.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\modules\DF_Rod_PowerAndImu.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\modules\DF_Rod_Registration.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\modules\DF_Rod_SchedulerAndInput.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\modules\DF_Rod_Ota.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\EB_IMU.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\ENow.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\Encoder.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\Potentiometer.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\SwitchButton.h" />
+    <ClInclude Include="..\firmware\DF_Rod\src\Version.h" />
+    <ClInclude Include="..\libraries\DFProtocol\src\DFProtocol.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

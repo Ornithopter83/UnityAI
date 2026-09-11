@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{6A30D849-A80B-4A3C-9A96-2E89CE8671A1}</ProjectGuid>
+    <Keyword>MakeFileProj</Keyword>
+    <RootNamespace>DF_Main</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration"><ConfigurationType>Makefile</ConfigurationType><UseDebugLibraries>true</UseDebugLibraries><PlatformToolset>v143</PlatformToolset></PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration"><ConfigurationType>Makefile</ConfigurationType><UseDebugLibraries>false</UseDebugLibraries><PlatformToolset>v143</PlatformToolset></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <Import Project="DF_Arduino_ESP32S3.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" /></ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" /></ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <NMakeBuildCommandLine>call "$(ProjectDir)..\tools\build-main.cmd" "$(Configuration)" "$(Platform)"</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>call "$(ProjectDir)..\tools\build-main.cmd" "$(Configuration)" "$(Platform)"</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>call "$(ProjectDir)..\tools\clean-main.cmd" "$(Configuration)" "$(Platform)"</NMakeCleanCommandLine>
+    <NMakeOutput>$(ProjectDir)..\artifacts\firmware\DF_Main\DF_Main.ino.bin</NMakeOutput>
+    <NMakePreprocessorDefinitions>$(DFArduinoPreprocessorDefinitions);$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
+    <NMakeIncludeSearchPath>$(ProjectDir)..\firmware\DF_Main;$(ProjectDir)..\firmware\DF_Main\src;$(ProjectDir)..\libraries\DFProtocol\src;$(DFArduinoIncludeSearchPath);$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
+    <NMakeForcedIncludes>$(DFArduinoForcedIncludes);$(NMakeForcedIncludes)</NMakeForcedIncludes>
+  </PropertyGroup>
+  <ItemGroup>
+    <ClCompile Include="..\firmware\DF_Main\DF_Main.ino"><CompileAs>CompileAsCpp</CompileAs></ClCompile>
+    <ClCompile Include="..\firmware\DF_Main\src\DF_Main_Application.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\DF_Main_State.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\modules\DF_Main_Communication.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\modules\DF_Main_LedControl.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\modules\DF_Main_CommandRouter.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\modules\DF_Main_DeviceCheck.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\modules\DF_Main_LmWireControl.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\modules\DF_Main_GameControl.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\modules\DF_Main_Diagnostics.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\modules\DF_Main_Scheduler.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\modules\DF_Main_RodOtaRelay.cpp" />
+    <ClCompile Include="..\libraries\DFProtocol\src\DFProtocol.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\BobbinMotor.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\Diag.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\ENow.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\Eeprom.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\Encoder.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\FileSys.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\Led.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\LmMotor.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\Potentiometer.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\ServoMotor.cpp" />
+    <ClCompile Include="..\firmware\DF_Main\src\Version.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\firmware\DF_Main\src\BobbinMotor.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\Common.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\Config.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\DF_Main.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\DF_Main_Application.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\DF_Main_Internal.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\DF_Main_State.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\modules\DF_Main_Communication.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\modules\DF_Main_LedControl.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\modules\DF_Main_CommandRouter.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\modules\DF_Main_DeviceCheck.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\modules\DF_Main_LmWireControl.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\modules\DF_Main_GameControl.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\modules\DF_Main_Diagnostics.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\modules\DF_Main_Scheduler.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\modules\DF_Main_RodOtaRelay.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\Diag.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\ENow.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\Eeprom.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\Encoder.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\FileSys.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\Led.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\LmMotor.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\Potentiometer.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\ServoMotor.h" />
+    <ClInclude Include="..\firmware\DF_Main\src\Version.h" />
+    <ClInclude Include="..\libraries\DFProtocol\src\DFProtocol.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

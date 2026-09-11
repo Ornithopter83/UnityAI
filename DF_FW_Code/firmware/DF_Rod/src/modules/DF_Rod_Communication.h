@@ -1,0 +1,33 @@
+#pragma once
+
+#include <Arduino.h>
+#include <esp_now.h>
+
+#ifndef BTN_LED_MAX_SIZE
+#define BTN_LED_MAX_SIZE 2
+#endif
+
+void sent_cb_esp_now_sts(const uint8_t* mac_addr, esp_now_send_status_t status);
+void recv_cb_esp_now_msg(const uint8_t *mac_info, const uint8_t *data, int data_len);
+int DF_Rod_Communication_TakeReceived(char *data, unsigned int capacity, unsigned int *length, unsigned char *sourceAddress, unsigned long *overwrittenCount, unsigned long *invalidCount);
+void DF_Rod_Communication_ProcessSendResult();
+void btnChangeCallback(String str);
+void rotateChangeCallback(String str);
+void imuDataCallback(String pid, String str);
+void setData_RodCycleTest(String msg);
+void sendInfo_boardType();
+void imuConnResp();
+void nowRecvHandler();
+void anaReelDeviceControl(int act, String msg);
+void anaVrtMotMainCmd(String msg);
+void anaBtnLedMainCmd(String msg);
+void rodVrtControl_Start(int cnt, unsigned int ontime, unsigned int offtime);
+void rodVrtControl_Stop();
+void rodVrtControl();
+void rodBtnLedControl_Start(int idx, unsigned int cnt, unsigned int ontime, unsigned int offtime);
+void rodBtnLedControl_Stop(int idx);
+void rodLfBtnLedControl();
+void rodRtBtnLedControl();
+
+extern int rodAliveRcv_LedBlinkFlag;
+extern unsigned short exeFlag_RodImuOutCycle;

@@ -1,0 +1,540 @@
+//
+// Common.h
+//
+#pragma once
+
+#include <DFProtocol.h>
+#include "Config.h"
+
+//------------------------------------------------------
+// 	DEFINE	GPIO	PIN
+//------------------------------------------------------
+
+//== Define LOG SERIAL PIN
+
+#define BOOT_MODE_PIN		0		// IO_0
+
+// Define Servo Moto
+#define PC_USB5V_PIN	3
+
+// Define Bobbin BLDC Motor
+#define BLDC_FG_PIN 	4	// PIN Setting
+#define BBN_MOT_ON_PIN	5		// ON
+#define BBN_MOT_DIR_PIN	6		// CW 
+#define BBN_MOT_PWM_PIN	7		// PWM
+
+// i2c
+#define I2C_SDA_PIN		8
+#define I2C_SCL_PIN		9
+
+
+// DEFINE TORQ MOTOR with SPI Potentio 
+#define TORQ_MOSI  		10		// Spi data
+#define TORQ_SCK   		11  		// Spi Clock
+#define TORQ_SS    		12		// Spi Select
+
+// LED(PWM)
+#define LED_CENT_R_PIN	13
+#define LED_CENT_G_PIN	14
+#define LED_CENT_B_PIN	21
+
+// Power
+#define SUB_ACOFF_PIN	15		// AC_OFF
+#define PWROFF_SWC_PIN	16		// PWR_Switch
+
+// Define Bobbin Encoder Input Pin
+#define BBN_ENC_A_CK_PIN	17
+#define BBN_ENC_B_DT_PIN 	18
+
+#define ENC_INTR_PIN	BBN_ENC_A_CK_PIN  // 인터럽트를 사용할 GPIO 핀 번호
+
+// Define USB CDC
+#define USB_DM			19		// D-
+#define USB_DP			20		// D+
+
+#define BBN_BLDC_24VON_PIN	38		//
+
+// Define Main Board LED PIN
+#define BD_LED2_PIN		39		//GAME(MAIN) ENB/DIS LED
+
+#define LED_BTM_PIN		42
+
+#define UART1_TX_PIN  	43		// LOG_TX : TXD_0
+#define UART1_RX_PIN  	44		// LOG_RX : RXD_0
+
+
+#define STRAPP_PSRAM_45	45
+#define STRAPP_PSRAM_46	46
+
+//
+
+
+#define DF_CONFIG_PIN		1		//	LM-JIG or NORMAL구분
+
+#define STRAPP_PSRAM_35	35
+#define STRAPP_PSRAM_36	36
+#define STRAPP_PSRAM_37	37
+#define BD_LED3_PIN		40		// Blinking(Slave 500ms Timer)
+#define BD_LED4_PIN		41		// Undefine ( LED ON at PowerON)
+#define FW_DEBUG_PIN	BD_LED4_PIN		// 41 // FW Debug Out Pin
+
+#define WDT_OUT_PIN		47  	//48
+
+#define STRAPP_PSRAM_48	48
+#define BD_TYPE_PIN		STRAPP_PSRAM_48		// 보드타입. TBD
+
+//=======END==========================================
+
+
+//------------------------------------------------------
+//	 DEFINE	HW	CONFIG/CH/... etc, 
+//------------------------------------------------------
+
+//=== PWM (BLDC MOT - BBN MOT, LM MOT)
+#define BLDC_HZ 		22000		//22 Khz
+#define BLDC_RESOL10	10			// 10bit (0 ~1023)
+#define BLDC_RESOL8		8			// 8 bit (0 ~255)
+#define BLDC_RESOL		BLDC_RESOL10
+
+//====PWM Channel
+//define PWM Parameter
+#define PWM_CH0	0
+#define PWM_CH1	1
+#define PWM_CH2	2
+#define PWM_CH3	3
+#define PWM_CH4	4
+#define PWM_CH5	5
+#define PWM_CH6	6
+#define PWM_CH7	7
+
+//=== System PWM Channel
+// BBN PWM Channel
+#define BOBBIN_CH	PWM_CH0		// CH _0
+#define LM_MOT_CH	PWM_CH1		// CH _ 1
+
+
+//===PWM LIMIT 
+#define BLDC_DUTY_FULL		(0)
+#define BLDC_DUTY_LIMIT192	(1)
+#define BLDC_DUTY_LIMIT128	(0)
+
+//=== IO ACTIVE LEVEL
+
+//---TOQ MOT Define
+#define TORQ_MOT_CW		0	// not Use
+
+
+//----LM MOT ACTIVE LEVEL
+#define LM_24VON  	LOW
+#define LM_24VOFF 	HIGH
+#define LM_MOT_ON	HIGH
+#define LM_MOT_OFF	LOW
+#define LM_MOT_CW	HIGH
+#define LM_MOT_CCW	LOW
+#define LM_PWM_INVERT	  (1) //(0)	  // INVERT BBN PWM DUTY
+// LM DIR
+#define LM_MOT_LEFT		LM_MOT_CW		//좌이동(CW)
+#define LM_MOT_RIGHT	LM_MOT_CCW		//우이동(CCW)
+
+//--- BBN BLDC ACTIVE
+#define BBN_BLDC_24VON	LOW 	//HIGH	//LOW
+#define BBN_BLDC_24VOFF HIGH	//LOW	//HIGH
+#define BBN_MOT_ON		HIGH // LOW // HIGH
+#define BBN_MOT_OFF 	LOW // HIGH // LOW
+#define BBN_MOT_CW		HIGH
+#define BBN_MOT_CCW		LOW
+#define BBN_PWM_INVERT		(1) //(1) //(0) 	// INVERT BBN PWM DUTY
+//
+#define BBN_MOT_PULL	BBN_MOT_CW
+#define BBN_MOT_REL		BBN_MOT_CCW		LOW
+
+
+//--- AC ACTIVE
+#define SUBAC_OFF_LVL 	HIGH
+#define SUBAC_ON_LVL 	LOW
+
+//--- LED ACTIVE
+#define LED_PWM_INVERT			(0)		// Port LED Duty HIGH
+
+
+//=== Define Direction
+//--- Define BBN Encoder Direction
+#define BBN_ENC_CW 	1
+#define BBN_ENC_CCW 2
+
+
+//---------------------------------------
+//	DEFINE	OUT		INVERT	 LEVEL
+//---------------------------------------
+
+
+//BBN Encoder Active LEVEL
+#define BBN_ENC_DIR_INVERT	(0)
+
+//=== PC-MAIN Commnad Define
+
+
+// SLAVE STATE Define
+
+/*
+#define ROD_STATUS_MASK 			0xFF00
+#define ROD_DISCONN_REASON_MASK 	0x00FF
+
+#define ROD_UNKNOWN   	0xFF00
+#define ROD_CONN			0x1100
+#define ROD_DISCONN   	0x0000
+	#define ROD_R_DISCONN_OTH		0x00
+	#define ROD_R_DIS_NOTINIT 	0x11
+	#define ROD_R_DIS_NOTPEER		0x12
+	#define ROD_R_NOT_RESP		0x20
+	#define ROD_R_DIS_SLEEP 		0x88
+	#define ROD_R_UNKOWN			0x99
+	#define ROD_R_DIS_MAC			0xFF
+*/
+//== NEW DEFINE REASON, 2자리 값으로 할 것!! 10~99, 0, -1, -2
+// 1~9 는 사용하지 말 것.
+#define ROD_UNKNOWN_2		(-2)   	
+#define ROD_UNKNOWN			(-1)   	
+#define ROD_CONN			0
+
+#define ROD_DISCONN			10
+#define ROD_R_DIS_NOTINIT 	11
+#define ROD_R_DIS_NOTPEER	12
+#define ROD_R_DISCONN_OTH	13
+#define ROD_R_DIS_MAC		19			
+
+#define ROD_R_NOT_RESP		20
+
+#define ROD_R_DIS_SLEEP 	88
+
+//---Connection Define ------------------
+#define UNKNOWN_2	-2
+#define UNKNOWN		-1
+#define CONNECT 	0
+#define DISCONNECT	1	// else 2~xx : Other Reason
+
+//=========================================================
+
+#define DEFAULT_TORQ_60 			60
+#define DEFAULT_TORQ_70 			70
+#define DEFAULT_TORQ_75 			75
+#define DEFAULT_TORQ_80 			80
+
+//-----------------DEFINE FORQ VAL
+#define DEFAULT_TORQ_10W 			60
+#define DEFAULT_TORQ_10W_HUD		70
+#define DEFAULT_TORQ_30W_GEAR 		55 ////56 // 58 // 55 //60
+
+#define DEFAULT_TORQ_30W_BELT 			70 // 65  // BLDC BELT Follow 
+#define DEFAULT_TORQ_30W_BELTSPRING 	70 // 64 // 65  // BLDC BELT Follow 
+
+// 문자열 기본값
+#define AUTOSET_DEFAULT_TORQ	70
+#define STR_AUTOSET_DEFAULT_TORQ	"70"		// 문자열, 기본값
+
+// 기본값 설정 범위(40~100)
+#define MAIN_MOT_FS_MIN_DUTY 	60 //50 // 60 // 40
+#define MAIN_MOT_FS_MAX_DUTY	80 // 90 //100
+
+#define MAIN_MOT_DEFAULT_MIN_DUTY 	60
+#define MAIN_MOT_DEFAULT_MAX_DUTY	80
+
+
+// 기본값 상수(INT)
+	#define DEFAULT_TORQ	DEFAULT_TORQ_30W_BELTSPRING		//TEST
+
+#define BBNBELT_AP_TORQ_ADDVAL 4
+//-------------------------------------------------------------------------------------
+
+//=== DEFINE BBN PWR
+
+#define DEFAULT_BBN_PWR		7	// 38 W
+#define WAVE_ADD_BBN_PWR	1
+
+
+//---- game Status---
+#define PROG_START		1
+#define GAME_WAIT		2		// 결제전 (대기)
+#define GAME_STBY		3		// 결재후, 각 항목 선택중
+#define CAST_WAIT		4		// 게임시작되어 캐스팅 대기화면
+#define CAST_COMP		5
+#define GAME_WAVE		6
+#define GAME_BITE		7
+#define GAME_HIT		8
+#define GAME_FIGHT		9
+#define GAME_HOLDON		10
+#define GAME_RANDING	11
+#define GAME_FAIL		12
+#define GAME_SUCCESS	GAME_FAIL	// FAIL=SUCCESS
+#define GAME_POINTUP	13
+#define GAME_CONTINUE	14
+#define GAME_OVER		15
+
+#define PROG_END		16
+
+#define GAME_MAX_ENUM	17
+//-----------------------------
+
+
+//---------------------------------------------
+//=== Device	 Error 	Code===
+//---------------------------------------------
+
+#define MAIN_DEV_CHK_OK		"0000"
+
+#define MAIN_BLDC_MOT_ERR	"6010"
+#define MAIN_TORQ_MOT_ERR	"6011"
+#define MAIN_WIRE_BROKEN_ERR	"6012"
+#define MAIN_WIRE_NOTSTABLE_ERR	"6013"
+
+#define MAIN_BBNENCA_SEN_ERR	"6020"
+#define MAIN_BBNENCB_SEN_ERR	"6021"
+
+#define MAIN_ROD_COMM_ERR	"6030"
+
+#define MAIN_BOARD_FLASH_FS_ERR	"6040"		// TBD
+#define MAIN_BOARD_BLDC_24V_ERR	"6041"
+
+#define MAIN_MMOT_AUTOSET_ERR	"6050"
+
+//----------------------------------
+#define ROD_BAT_LOW_WARN	"7020"		// 15%미만
+#define ROD_IMU_COMM_ERR	"7030"
+
+//== DATA Type Macro
+
+
+
+//===DEFINE MACRO===
+
+//=== Function Macro
+//--- PC(SERIAL_0) Macro====
+#define ApPrint		if (g_SerialEnable) print
+#define ApPrintf	if (g_SerialEnable) Serial.printf
+#define ApPrintln	if (g_SerialEnable) Serial.println
+// Define Macro
+#define Resp2ApPrintln if (g_SerialEnable) Serial.println		//확인용 RESP
+#define StsSendPrintln if (g_SerialEnable) Serial.println
+
+//--- LOG(SERIAL_1) Macro====
+#define LogSerial	Serial1
+#define LogPrint	Serial1.print
+#define LogPrintf	Serial1.printf("%10d",curr_ms_tick);Serial1.printf
+#define LogPrintln	Serial1.printf("%10d",curr_ms_tick);Serial1.println
+
+#define LogPrintTime	Serial1.printf("%10d",curr_ms_tick)
+#define LogPrintTimeln  Serial1.println
+
+// EXT_IO UART MACRO
+#define ExtSerial	Serial2
+#define send2extPrint	Serial2.print
+#define send2extPrintf	Serial2.printf		// Not USE
+#define send2extPrintln	Serial2.println
+
+
+
+//===Macro End===
+//=== Define Diag Constnant
+#define DAIG_OFF	0
+#define DAIG_ON		1
+
+#define DAIG_MOT_OFF 0
+#define DAIG_MOT_CW  1
+#define DAIG_MOT_CCW 2
+
+#define ON	HIGH
+#define OFF	LOW
+
+#define LED_ON	HIGH
+#define LED_OFF	LOW
+
+
+// Main Machine Mode : mainMode
+#define IDLE_MODE	0
+#define NORMAL_MODE	1
+#define DIAG_MODE	3
+#define REV04_MODE	4
+
+// Define Game LEVEL
+#define LEVEL_EASY 		1
+#define LEVEL_NORMAL	2
+#define LEVEL_HARD		3
+
+// PIN MODE SET
+#define SUBAC_ON_LVL LOW
+#define SIPPAGOE 		10 // 12 // 13 // 10	// SEC
+
+#define LED_MAX_DUTY	255		// Duty 10 bit (1023)
+#define LED_OFF_DUTY	0
+
+#define LED_MAX_COLOR	255			// 10bit -> 8bit변환
+#define LED_MIN_COLOR	0
+
+//-- LED CMD ACT
+#define LED_CON_OFF		0
+#define LED_CON_ON		1
+#define LED_CON_BLINK	2
+#define LED_CON_DIMM	3
+
+
+// 
+//--- LED IF POSITION
+#define LED_IDX_CENT	1
+#define LED_IDX_BTM		2
+#define LED_IDX_LEFT	3
+#define LED_IDX_RIGHT	4
+//
+#define LED_IDX_MAX	5	//
+//----
+//--- LED COLOR
+#define COLOR_WHITE		0
+#define COLOR_RED		1
+#define COLOR_GREEN		2
+#define COLOR_BLUE		3
+#define COLOR_YELLOW	4
+#define COLOR_CYAN		5
+#define COLOR_MAGENTA	6
+
+#define COLOR_RESV07	7	//reserved
+#define COLOR_RESV14	14	//reserved
+
+#define COLOR_BLACK		15
+//---
+
+//--- IMU CMD SEND
+#define IMU_DATA_OFF	0
+#define IMU_DATA_ON		1
+
+// MAC Address String  LENGTH
+
+//---------------------------------------------
+// === Define 	NOW PID	MAIN 2 ROD
+//---------------------------------------------
+//=== STRING PID, MAIN => ROD
+
+
+//=== RESP/STS , MAIN <= ROD
+
+
+
+
+//---REEL BTN LED DEFINE-------------------
+#define BTN_LED_MAX_SIZE	2
+
+#define BTN_LED_LEFT_IDX	0
+#define BTN_LED_RIGHT_IDX	1
+
+//---TYPE DEF----
+#define uint_t	(unsigned int)
+
+
+//----------------------------------
+//	DEFINE CONTROL STEP
+//----------------------------------
+#define STEP_IDLE	0
+#define STEP_START	10
+#define STEP_END	90
+
+//-- Step Define
+#define LM_LEFT_HOME_RETURN		80
+#define LM_RIGHT_HOME_RETURN	80
+
+
+//----------------------------------
+
+//=================================
+// NVM OFFSET DEFINE
+//=================================
+#define	NVM_OFS_MANUFACT	0x0000	// 1K
+#define NVM_OFS_PART_LIFE	0x0400	// 2K
+#define NVM_OFS_ERROR_LIST	0x0C00	// 2K
+#define NVM_OFF_INIT_DONE	0x1400	// 2 Byte
+#define NVM_OFF_INIT_DATA	0x1402	// (2K-2)
+#define NVM_OFS_SETTING		0x1C00	// 4K
+#define NVM_OFS_ADJUST		0x2C00	// 4K
+#define NVM_OFS_RSV_END		0x3C00	//
+// ~~~
+#define NVM_OFS_END			0x8000	// 32 K Byte
+
+//--- Manufact Data Offset
+
+//---LIFE Data Offset
+
+//---ERROR List Offset
+
+//---INIT Data Offset
+
+//---Setting Data Offset
+
+//--- Adjust Data Offset
+#define NVM_OFS_FISH_LEVEL	NVM_OFF_ADJUST
+
+
+//-------------------------------------------------
+//	Bobbin Encoder CNT
+//-------------------------------------------------
+// 3 미터  = 1 M(a) + 2M(b)
+//  a) Reel EndGuide ~ Reel 1st Guide : 1M
+//	b) Reel 1st Guide ~ Bobbin 접선 : 2M
+#define WIRE_HOME_DIST	(3*1000)	// [mm] 3미터
+#define BBN_ENC_1PULSE_DIST	(10472)	//(10.47197551)	//X [mm] * 1000 
+#define WIRE_HOME_BBN_CNT	(WIRE_HOME_DIST*1000/BBN_ENC_1PULSE_DIST)	//286 [cnt]
+
+#define WRIE_MAX_DIST	(360*10)	//360 cm = 3.6미터
+#define TARGET_SUB_VAL	100		// 10 cm = 100mm
+
+//---------------------------------------------------
+//--- AP Type
+#define AP_IS_DF	0
+#define AP_IS_TM	1
+
+
+//==========================================
+// File System Define
+//===========================================
+#define MANUF_INFO		1
+#define INSTALL_INFO	2
+#define MAINMOT_INFO	3
+#define BLDC_LIMIT_INFO	4
+#define BOOTING_INFO	5			// (V108)
+
+//------------------------------------------
+//	배터리 충전 여부 정의.
+//------------------------------------------
+#define BAT_INT_UNKNOWN		-1		// 참고용
+#define BAT_INT_DISCONN		-2		// 참고용
+#define BAT_STR_CHAGER_NOCHANGE		"-3%"	// 변화없음, AP표시 : "   ", 회색
+#define BAT_STR_CHAGER_CHANGING		"-4%"	// 충전중, AP표시 : "충전",빨강
+#define BAT_STR_CHAGER_USE			"-5%"	// 사용중(방전중), AP표시 : "사용",녹색
+
+//
+#define BAT_LVL_LOW		15		// 15% 미만 (7020 워닝 통지)
+
+
+//== 메인보드 Type == -1:모름, 0-미사용, 1-OLD, 2-신규(TBD)
+#define MAIN_BOARD_V10		1	//
+#define MAIN_BOARD_V11		2	// TBD, 엔코더 수정보드, 250630 보드수정 버전 = V 1.1
+
+//-------------------------------------------
+#define CHECK_TIME_1SEC_TO	1000
+#define CHECK_TIME_2SEC_TO	2000
+#define CHECK_TIME_3SEC_TO	3000
+#define CHECK_TIME_4SEC_TO	4000
+#define CHECK_TIME_5SEC_TO	5000
+
+#define CHECK_TIME_10SEC_TO	(10 * 1000)	// 10 SEC
+#define CHECK_TIME_20SEC_TO	(20 * 1000)	// 20 SEC
+
+//------------------------------------------
+
+
+//---------------------------------------------------------
+
+//--BLDC출력 제한 값-----
+#define BLDC_LIMIT_MAX	255
+#define STR_BLDC_LIMIT_MAX	"255"
+#define BLDC_LIMIT_MIN	100
+#define STR_BLDC_LIMIT_MIN	"100"
+
+//----------------------------------------------------
+
